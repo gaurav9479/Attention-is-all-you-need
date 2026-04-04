@@ -63,7 +63,19 @@ export default function Analyzer() {
         // Auto-populate the Insight panel with the baseline MCP overview of the entire app
         if (initialMcp) {
           setSelectedFile({ name: "Repository Architecture", path: "/" });
-          setAnalysis(initialMcp);
+          
+          // Sanitize the initial overview so it doesn't accidentally lock onto the riskiest node
+          // and display localized file dependencies before the user has even clicked anything.
+          const globalOverview = {
+            ...initialMcp,
+            focus_node: null,
+            risk: null,
+            dependencies: null,
+            matches: null,
+            summary: `System topology successfully mapped. Analyzed ${typedNodes.length} modules and ${graphData.edges?.length || 0} active cross-connections.`
+          };
+          
+          setAnalysis(globalOverview);
         }
       }
     } catch (err) {
@@ -96,8 +108,10 @@ export default function Analyzer() {
   };
 
   const onNodeClick = useCallback(async (_, node) => {
+    // Determine the precise node ID (relative path) to synchronize perfectly with the MCP Engine backend
     const nodeData = node.data || node;
-    const nodeIdToFetch = nodeData.id || nodeData.path;
+    const nodeIdToFetch = node.id || nodeData.id || nodeData.path;
+    
     if (!nodeIdToFetch) return;
 
     setSelectedFile({ name: nodeData.label || nodeData.name, path: nodeData.path });
