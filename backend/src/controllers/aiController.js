@@ -21,27 +21,25 @@ export const getSummary = async (req, res) => {
       { timeout: TIMEOUT_MS }
     );
 
-    const { summary, risk_score, risk_reason, language } = response.data;
-    
-    // Map python structured output into frontend panel format
-    let mappedRisk = "low";
-    if (risk_score > 3) mappedRisk = "medium";
-    if (risk_score > 6) mappedRisk = "high";
+    // Destructure specifically what the Python service now returns
+    const { purpose, risk_score, warnings, functions, classes } = response.data;
 
     return res.json({ 
-      purpose: summary || "Successfully analyzed file.", 
-      inputs: "N/A",
-      output: language || "Unknown", 
-      risk: mappedRisk
+      purpose,
+      risk_score,
+      warnings: warnings || [],
+      functions: functions || [],
+      classes: classes || []
     });
   } catch (err) {
     console.error(`[AI] API call failed: ${err.message}`);
     
     return res.status(200).json({
-      purpose: "AI service failed or timed out.",
-      inputs: "N/A",
-      output: "N/A",
-      risk: "low"
+      purpose: "AI service failed or timed out. Please try again.",
+      risk_score: 0,
+      warnings: ["Unable to fetch security warnings"],
+      functions: [],
+      classes: []
     });
   }
 };

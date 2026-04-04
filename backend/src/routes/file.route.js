@@ -1,9 +1,9 @@
 import express from "express";
-import { getFiles, getFileContent } from "../controllers/fileController.js";
+import { getTree, getFileContent } from "../controllers/fileController.js";
 
 const router = express.Router();
 
-router.get("/files", getFiles);
+router.get("/files", getTree);
 router.get("/file", getFileContent);
 
 export default router;

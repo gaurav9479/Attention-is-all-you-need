@@ -1,48 +1,59 @@
 export const getLayoutedElements = (nodes, edges) => {
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  
   const fileNodes = nodes.filter((n) => n.data.type === "file");
   const subNodes = nodes.filter((n) => n.data.type !== "file");
 
-  // Lay out files in a grid (Level 0) wrapper every 6 files
-  const FILES_PER_ROW = 6;
-  const FILE_SPACING_X = 500;
-  const ROW_SPACING_Y = 800; // Leave massive vertical space for children depth
+  // 1. PROJECT ROOT
+  const rootNode = {
+    id: 'root-node',
+    type: 'custom',
+    position: { x: 400, y: 0 },
+    data: { label: 'Repository Root', type: 'root' }
+  };
+  
+  // 2. FILES (LEVEL 1)
+  const FILE_SPACING_X = isMobile ? 300 : 450;
+  const FILE_Y = 200;
   
   fileNodes.forEach((node, i) => {
-    const row = Math.floor(i / FILES_PER_ROW);
-    const col = i % FILES_PER_ROW;
-    node.position = { x: col * FILE_SPACING_X, y: row * ROW_SPACING_Y };
-    node.sourcePosition = "bottom";
-    node.targetPosition = "top";
+    const totalFiles = fileNodes.length;
+    const startX = 400 - ((totalFiles - 1) * FILE_SPACING_X) / 2;
+    node.position = { x: startX + i * FILE_SPACING_X, y: FILE_Y };
+    
+    // Add edge from root to file
+    edges.push({
+        id: `root-to-${node.id}`,
+        source: 'root-node',
+        target: node.id,
+        animated: true,
+        style: { stroke: '#334155', strokeWidth: 1 }
+    });
   });
 
-  // Lay out functions/classes directly underneath their parent file (Level 1)
+  // 3. ATOMS (LEVEL 2) - Functions/Classes
   subNodes.forEach((node) => {
-    node.sourcePosition = "bottom";
-    node.targetPosition = "top";
-
     const edge = edges.find((e) => e.target === node.id);
     if (edge) {
       const parentFile = fileNodes.find((n) => n.id === edge.source);
       if (parentFile) {
-        // Find all siblings of this node
         const peers = subNodes.filter((n) => {
-          const e = edges.find((ed) => ed.target === n.id);
-          return e && e.source === parentFile.id;
+           const e = edges.find((ed) => ed.target === n.id);
+           return e && e.source === parentFile.id;
         });
         const index = peers.findIndex((n) => n.id === node.id);
 
-        // Branch out left and right under the parent
-        const offsetMultiplier = Math.ceil(index / 2) * (index % 2 === 0 ? 1 : -1);
         const SPACING_X = 140;
-        const SPACING_Y = 120 + Math.floor(index / 2) * 50;
+        const SPACING_Y = 120 + Math.floor(index / 2) * 60;
+        const offset = Math.ceil(index / 2) * (index % 2 === 0 ? 1 : -1);
 
         node.position = {
-          x: parentFile.position.x + offsetMultiplier * SPACING_X,
+          x: parentFile.position.x + offset * SPACING_X,
           y: parentFile.position.y + SPACING_Y,
         };
       }
     }
   });
 
-  return { nodes, edges };
+  return { nodes: [rootNode, ...nodes], edges };
 };

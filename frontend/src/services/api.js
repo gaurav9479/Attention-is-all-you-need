@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const apiClient = axios.create({
-  baseURL: `http://${window.location.hostname}:3001/api`,
+  baseURL: `http://${window.location.hostname}:5005/api`,
 });
 
 export const cloneRepo = async (repoUrl) => {
@@ -9,13 +9,18 @@ export const cloneRepo = async (repoUrl) => {
   return data;
 };
 
-export const fetchGraph = async () => {
-  const { data } = await apiClient.get("/graph");
+export const fetchGraph = async (repoName) => {
+  const { data } = await apiClient.get(`/graph?repo=${repoName || ""}`);
   return data;
 };
 
-export const fetchFileContent = async (path) => {
-  const { data } = await apiClient.get(`/file?path=${encodeURIComponent(path)}`);
+export const fetchTree = async (repoName) => {
+  const { data } = await apiClient.get(`/files?repo=${repoName || ""}`);
+  return data;
+};
+
+export const fetchFileContent = async (path, repoName) => {
+  const { data } = await apiClient.get(`/file?path=${encodeURIComponent(path)}&repo=${repoName || ""}`);
   return data;
 };
 

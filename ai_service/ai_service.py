@@ -22,7 +22,7 @@ client = OpenAI(
 MODEL = "gpt-4o-mini"
 MAX_RETRIES = 3
 
-app = FastAPI(title="Codebase Cipher AI Service")
+app = FastAPI(title="CodeMap AI Service")
 
 app.add_middleware(
     CORSMiddleware,
@@ -33,18 +33,17 @@ app.add_middleware(
 )
 
 
-# ---------- Request / Response Models ----------
-
 class AnalyzeRequest(BaseModel):
     filename: str
     code: str
 
 
 class AnalyzeResponse(BaseModel):
-    summary: str
+    purpose: str
     risk_score: int
-    risk_reason: str
-    language: str
+    warnings: List[str]
+    functions: List[str]
+    classes: List[str]
 
 
 class FileImports(BaseModel):
@@ -62,17 +61,43 @@ class WarningsResponse(BaseModel):
 
 # ---------- Helpers ----------
 
+def _extract_structures(code: str, filename: str):
+    """Regex-based extraction for functions and classes."""
+    ext = os.path.splitext(filename)[1].lower()
+    funcs = []
+    classes = []
+    
+    if ext == ".py":
+        funcs = re.findall(r"def\s+([a-zA-Z_][a-zA-Z0-9_]*)", code)
+        classes = re.findall(r"class\s+([a-zA-Z_][a-zA-Z0-9_]*)", code)
+    elif ext in [".js", ".jsx", ".ts", ".tsx"]:
+        # Funcs: function name() OR const name = () =>
+        f1 = re.findall(r"function\s+([a-zA-Z0-9_]+)", code)
+        f2 = re.findall(r"(?:const|let|var)\s+([a-zA-Z0-9_]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[a-zA-Z0-9_]+)\s*=>", code)
+        funcs = list(set(f1 + f2))
+        classes = re.findall(r"class\s+([a-zA-Z0-9_]+)", code)
+        
+    return funcs, classes
+
+
 def _extract_json(text: str) -> dict:
     """Strip markdown fences if present and parse JSON."""
     text = text.strip()
     fenced = re.search(r"```(?:json)?\s*([\s\S]+?)```", text)
     if fenced:
         text = fenced.group(1).strip()
-    return json.loads(text)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # Try to find a JSON object if parsing failed
+        json_match = re.search(r"\{[\s\S]*\}", text)
+        if json_match:
+            return json.loads(json_match.group(0))
+        raise
 
 
 def _chat(messages: list, retries: int = MAX_RETRIES) -> dict:
-    """Call OpenRouter with JSON response_format, retrying on parse failure."""
+    """Call OpenAI with JSON response_format, retrying on parse failure."""
     last_err = None
     for attempt in range(1, retries + 1):
         try:
@@ -103,13 +128,16 @@ def _chat(messages: list, retries: int = MAX_RETRIES) -> dict:
 @app.post("/analyze", response_model=AnalyzeResponse)
 def analyze(req: AnalyzeRequest):
     """Analyze a single file and return a structured summary with risk assessment."""
+    
+    # 1. Regex Extraction for structure
+    reg_funcs, reg_classes = _extract_structures(req.code, req.filename)
+    
     system_prompt = (
         "You are an expert code reviewer. "
         "Analyze the provided source code and return ONLY a JSON object with these exact keys:\n"
-        '  "summary": string — 2-3 sentence description of what this file does,\n'
-        '  "risk_score": integer 0-10 — security/quality risk (0=safe, 10=critical),\n'
-        '  "risk_reason": string — one sentence explaining the risk score,\n'
-        '  "language": string — programming language detected (e.g. "Python", "TypeScript").'
+        '  "purpose": string — 2-3 sentence description of what this file does,\n'
+        '  "risk_score": integer 0-100 — security/quality risk (0=safe, 100=critical),\n'
+        '  "warnings": array of strings — concise security/logic warnings.'
     )
     user_prompt = f"Filename: {req.filename}\n\n```\n{req.code[:8000]}\n```"
 
@@ -121,10 +149,11 @@ def analyze(req: AnalyzeRequest):
             ]
         )
         return AnalyzeResponse(
-            summary=str(data.get("summary", "")),
+            purpose=str(data.get("purpose", "")),
             risk_score=int(data.get("risk_score", 0)),
-            risk_reason=str(data.get("risk_reason", "")),
-            language=str(data.get("language", "Unknown")),
+            warnings=data.get("warnings", []),
+            functions=reg_funcs,
+            classes=reg_classes
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
