@@ -8,6 +8,7 @@ import SidebarLeft from "../components/Layout/SidebarLeft";
 import InsightPanel from "../components/Panel/InsightPanel";
 import StatusBar from "../components/Layout/StatusBar";
 import GraphView from "../components/Graph/GraphView";
+import CosmicGraphView from "../components/Graph/CosmicGraphView";
 
 export default function Analyzer() {
   const [nodes, setNodes] = useState([]);
@@ -16,6 +17,7 @@ export default function Analyzer() {
   const [repoName, setRepoName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [levelFilter, setLevelFilter] = useState("all");
+  const [uiMode, setUiMode] = useState("normal"); // Dual UI Mode State
   
   const [selectedFile, setSelectedFile] = useState(null);
   const [analysis, setAnalysis] = useState(null);
@@ -53,14 +55,18 @@ export default function Analyzer() {
   };
 
   const onNodeClick = useCallback(async (_, node) => {
-    const fileData = { name: node.data.label, path: node.data.path };
+    // For Cosmic Mode, node holds data directly or in .data
+    const nodeData = node.data || node;
+    if (!nodeData.path) return;
+
+    const fileData = { name: nodeData.label || nodeData.name, path: nodeData.path };
     setSelectedFile(fileData);
     setIsAnalyzing(true);
     setAnalysis(null);
 
     try {
-      const codeResp = await fetchFileContent(node.data.path, repoName);
-      const summary = await fetchSummary(node.data.label, codeResp.content);
+      const codeResp = await fetchFileContent(nodeData.path, repoName);
+      const summary = await fetchSummary(nodeData.label || nodeData.name, codeResp.content);
       setAnalysis(summary);
     } catch (err) {
       console.error("AI Analysis failed:", err);
@@ -81,7 +87,7 @@ export default function Analyzer() {
 
   return (
     <div className="flex flex-col h-screen w-full bg-[#0d0d0f] text-slate-200 overflow-hidden font-sans">
-      <Navbar onAnalyze={handleAnalyze} isLoading={isLoading} />
+      <Navbar onAnalyze={handleAnalyze} isLoading={isLoading} uiMode={uiMode} onModeToggle={setUiMode} />
       
       <div className="flex flex-1 overflow-hidden">
         <SidebarLeft 
@@ -91,15 +97,24 @@ export default function Analyzer() {
         />
         
         <main className="flex-1 relative bg-[#09090b]">
-           <GraphView 
-             nodes={nodes}
-             edges={edges}
-             loading={isLoading}
-             levelFilter={levelFilter}
-             onNodesChange={onNodesChange}
-             onEdgesChange={onEdgesChange}
-             onNodeClick={onNodeClick}
-           />
+           {uiMode === 'normal' ? (
+             <GraphView 
+               nodes={nodes}
+               edges={edges}
+               loading={isLoading}
+               levelFilter={levelFilter}
+               onNodesChange={onNodesChange}
+               onEdgesChange={onEdgesChange}
+               onNodeClick={onNodeClick}
+             />
+           ) : (
+             <CosmicGraphView 
+               nodes={nodes}
+               edges={edges}
+               loading={isLoading}
+               onNodeClick={(node) => onNodeClick(null, node)}
+             />
+           )}
         </main>
 
         <InsightPanel 
@@ -111,7 +126,7 @@ export default function Analyzer() {
 
       <StatusBar 
         status={isLoading ? "Processing Repository..." : "System Ready"} 
-        stats={{ repoName, totalFiles: nodes.filter(n => n.data.type === 'file').length, totalFunctions: nodes.filter(n => n.data.type === 'function').length }} 
+        stats={{ repoName, totalFiles: nodes.filter(n => n.data?.type === 'file').length, totalFunctions: nodes.filter(n => n.data?.type === 'function').length }} 
       />
     </div>
   );
