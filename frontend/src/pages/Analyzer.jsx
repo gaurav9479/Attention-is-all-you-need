@@ -62,7 +62,7 @@ export default function Analyzer() {
 
   const onNodeClick = useCallback(async (_, node) => {
     setSelectedNode(node);
-    if (!node.data?.path || node.data?.type !== "file") {
+    if (!node.data?.path) {
       setPanelData({ code: null, summary: null, loadingCode: false, loadingSummary: false, error: null });
       return;
     }
@@ -75,20 +75,14 @@ export default function Analyzer() {
       
       setPanelData(prev => ({ ...prev, code: codeStr, loadingCode: false, loadingSummary: true }));
 
-      // Temporary: Disabled AI fetching to ensure core functionality works smoothly without relying on the AI API
-      // const summaryData = await fetchSummary(codeStr);
-      setTimeout(() => {
-        setPanelData(prev => ({ 
-          ...prev, 
-          summary: {
-            purpose: "AI features currently disabled for testing core app functionality.",
-            inputs: "N/A",
-            output: "N/A",
-            risk: "low"
-          }, 
-          loadingSummary: false 
-        }));
-      }, 300); // Small visual delay to show the panel transition
+      // Fetch AI Insight using real data
+      const summaryData = await fetchSummary(node.data.path, codeStr);
+      
+      setPanelData(prev => ({ 
+        ...prev, 
+        summary: summaryData, 
+        loadingSummary: false 
+      }));
 
     } catch (err) {
       console.error(err);

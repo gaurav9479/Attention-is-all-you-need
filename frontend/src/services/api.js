@@ -19,7 +19,7 @@ export const fetchFileContent = async (path) => {
   return data;
 };
 
-export const fetchSummary = async (code) => {
-  const { data } = await apiClient.post("/summary", { code });
+export const fetchSummary = async (filename, code) => {
+  const { data } = await apiClient.post("/summary", { filename, code });
   return data;
 };
