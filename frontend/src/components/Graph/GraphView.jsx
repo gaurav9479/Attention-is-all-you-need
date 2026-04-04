@@ -6,7 +6,18 @@ import Loader from "../UI/Loader";
 
 const NODE_TYPES = { custom: CustomNode };
 
-function GraphInner({ nodes, edges, loading, search = "", levelFilter, onNodesChange, onEdgesChange, onNodeClick }) {
+function GraphInner({
+  nodes,
+  edges,
+  loading,
+  search = "",
+  levelFilter,
+  highlightNodeIds = [],
+  highlightEdgeIds = [],
+  onNodesChange,
+  onEdgesChange,
+  onNodeClick,
+}) {
   const { fitView } = useReactFlow();
   const [hoveredEdge, setHoveredEdge] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
@@ -51,6 +62,27 @@ function GraphInner({ nodes, edges, loading, search = "", levelFilter, onNodesCh
     const hasImpact = impactChain.nodes.size > 1;
 
     return nodes.map((n) => {
+      const isImpactHighlighted = highlightNodeIds.includes(n.id);
+      // Toggle hidden status based on search
+      let isHidden = !n.data?.label?.toLowerCase().includes(lowerSearch);
+      
+      // Also apply level filter
+      if (levelFilter === "files" && n.data?.type !== "file") {
+        isHidden = true;
+      }
+      return {
+        ...n,
+        hidden: isHidden,
+        style: isImpactHighlighted
+          ? {
+              ...(n.style || {}),
+              border: "1px solid #f59e0b",
+              boxShadow: "0 0 18px rgba(245,158,11,0.38)",
+            }
+          : n.style,
+      };
+    });
+  }, [nodes, search, levelFilter, highlightNodeIds]);
       const label = n.data?.label || "";
       const isHidden = !label.toLowerCase().includes(lowerSearch) || 
                        (levelFilter === "files" && n.data?.type !== "file");
@@ -79,6 +111,33 @@ function GraphInner({ nodes, edges, loading, search = "", levelFilter, onNodesCh
     const hasImpact = impactChain.edges.size > 0;
     
     return edges.map((edge) => {
+      if (highlightEdgeIds.includes(edge.id)) {
+        return {
+          ...edge,
+          animated: true,
+          style: { stroke: "#ef4444", strokeWidth: 2.8 },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: "#ef4444",
+          },
+        };
+      }
+
+      // Apply specialized styling for imports
+      if (edge.data?.type === 'import') {
+        return {
+          ...edge,
+          animated: true,
+          style: { stroke: '#f59e0b', strokeWidth: 2.5 },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: '#f59e0b',
+          },
+        };
+      }
+      return edge;
+    });
+  }, [edges, levelFilter, highlightEdgeIds]);
       const isPartOfImpact = impactChain.edges.has(edge.id);
       const isImport = edge.data?.type === 'import';
       const isHierarchy = edge.data?.type === 'hierarchy';

@@ -1,7 +1,13 @@
 import { useState, useCallback, useEffect } from "react";
 import { applyNodeChanges, applyEdgeChanges } from "reactflow";
-import { useLocation } from "react-router-dom";
-import { fetchGraph, fetchMcpNode, queryMcp, cloneRepo, fetchTree, fetchFileContent, fetchSummary } from "../services/api";
+import {
+  fetchGraph,
+  fetchFileContent,
+  fetchSummary,
+  cloneRepo,
+  fetchTree,
+  fetchImpactSimulation,
+} from "../services/api";
 import { getLayoutedElements } from "../utils/layout";
 
 import Navbar from "../components/Layout/Navbar";
@@ -22,7 +28,9 @@ export default function Analyzer() {
   const [uiMode, setUiMode] = useState(location.state?.uiMode || "normal"); // Inherit from Landing Screen
 
   const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [analysis, setAnalysis] = useState(null);
+  const [impactAnalysis, setImpactAnalysis] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [mcpQuery, setMcpQuery] = useState("");
 
@@ -32,6 +40,35 @@ export default function Analyzer() {
       handleAnalyze(location.state.repoUrl);
     }
   }, [location.state?.repoUrl]);
+  const [isImpactLoading, setIsImpactLoading] = useState(false);
+  const [impactChangeType, setImpactChangeType] = useState("modify");
+  const [highlightNodeIds, setHighlightNodeIds] = useState([]);
+  const [highlightEdgeIds, setHighlightEdgeIds] = useState([]);
+
+  const runImpactSimulation = useCallback(
+    async ({ nodeId, changeType = "modify" }) => {
+      if (!repoName) return null;
+
+      setIsImpactLoading(true);
+      try {
+        const impact = await fetchImpactSimulation({
+          repo: repoName,
+          nodeId: nodeId || null,
+          changeType,
+          maxDepth: 3,
+          limit: 10,
+        });
+
+        setImpactAnalysis(impact);
+        setHighlightNodeIds(impact?.ui_hints?.highlight_node_ids || []);
+        setHighlightEdgeIds(impact?.ui_hints?.highlight_edge_ids || []);
+        return impact;
+      } finally {
+        setIsImpactLoading(false);
+      }
+    },
+    [repoName]
+  );
 
   const handleAnalyze = async (repoUrl) => {
     setIsLoading(true);
@@ -100,56 +137,44 @@ export default function Analyzer() {
     const nodeIdToFetch = nodeData.id || nodeData.path;
     if (!nodeIdToFetch) return;
 
-    setSelectedFile({ name: nodeData.label || nodeData.name, path: nodeData.path });
+    const fileData = { name: nodeData.label || nodeData.name, path: nodeData.path };
+    setSelectedFile(fileData);
+    setSelectedNodeId(node.id || null);
+    setImpactChangeType("modify");
     setIsAnalyzing(true);
-    
-    // Optimistic UI state
-    setAnalysis({ summary: "Parallel engines running: Extracting structures & semantics..." });
+    setAnalysis(null);
+    setImpactAnalysis(null);
+    setHighlightNodeIds([]);
+    setHighlightEdgeIds([]);
 
     try {
-      // Launch MCP Structural Sweep and LLM Semantic Reasoner concurrently
-      const mcpPromise = fetchMcpNode(repoName, nodeIdToFetch, uiMode);
-      
-      let aiPromise = Promise.resolve(null);
-      if (nodeData.path && nodeData.type !== 'function' && nodeData.type !== 'class') {
-        aiPromise = fetchFileContent(nodeData.path, repoName)
-          .then(async (codeResp) => await fetchSummary(nodeData.label || nodeData.name, codeResp.content))
-          .catch(err => {
-            console.error("AI Semantic backend degraded:", err);
-            return null;
-          });
+      const codeResp = await fetchFileContent(node.data.path, repoName);
+
+      const [summary, impact] = await Promise.all([
+        fetchSummary(node.data.label, codeResp.content),
+        runImpactSimulation({ nodeId: node.id || null, changeType: "modify" }),
+      ]);
+
+      setAnalysis(summary);
+      if (!impact) {
+        setImpactAnalysis(null);
       }
-
-      // Merge results as they stream in
-      mcpPromise.then(mcpPayload => {
-        setAnalysis(prev => ({
-          ...mcpPayload,
-          summary: prev?.summary?.includes("Parallel") ? "Structural map locked. Waiting for semantics..." : prev?.summary || mcpPayload.summary
-        }));
-      }).catch(err => console.error("MCP Map fetch failed", err));
-
-      aiPromise.then(aiSummary => {
-        if (aiSummary && aiSummary.purpose) {
-          setAnalysis(prev => ({
-            ...(prev || {}),
-            summary: aiSummary.purpose
-          }));
-        } else {
-             setAnalysis(prev => ({
-                ...(prev || {}),
-                summary: prev?.summary?.includes("Waiting") ? (prev.summary_fallback || "No custom semantics found.") : prev?.summary
-             }));
-        }
-      });
-
-      await Promise.allSettled([mcpPromise, aiPromise]);
-
     } catch (err) {
       console.error("Parallel node analysis failed:", err);
     } finally {
       setIsAnalyzing(false);
     }
-  }, [repoName, uiMode]);
+  }, [repoName, runImpactSimulation]);
+
+  const handleRunImpactSimulation = useCallback(
+    async (nextChangeType) => {
+      if (!selectedFile || !repoName) return;
+      const type = nextChangeType || impactChangeType;
+      setImpactChangeType(type);
+      await runImpactSimulation({ nodeId: selectedNodeId, changeType: type });
+    },
+    [selectedFile, repoName, impactChangeType, selectedNodeId, runImpactSimulation]
+  );
 
   const onNodesChange = useCallback(
     (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
@@ -193,6 +218,17 @@ export default function Analyzer() {
              </form>
            </div>
 
+           <GraphView 
+             nodes={nodes}
+             edges={edges}
+             loading={isLoading}
+             levelFilter={levelFilter}
+             highlightNodeIds={highlightNodeIds}
+             highlightEdgeIds={highlightEdgeIds}
+             onNodesChange={onNodesChange}
+             onEdgesChange={onEdgesChange}
+             onNodeClick={onNodeClick}
+           />
            {uiMode === 'normal' ? (
              <GraphView 
                nodes={nodes}
@@ -215,7 +251,11 @@ export default function Analyzer() {
 
         <InsightPanel 
           selectedFile={selectedFile}
-          analysis={analysis} // this is now the rich MCP payload
+          analysis={analysis}
+          impactAnalysis={impactAnalysis}
+          impactType={impactChangeType}
+          impactLoading={isImpactLoading}
+          onRunImpactSimulation={handleRunImpactSimulation}
           isLoading={isAnalyzing}
         />
       </div>

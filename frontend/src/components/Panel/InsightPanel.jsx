@@ -1,5 +1,13 @@
-export default function InsightPanel({ analysis, isLoading, selectedFile }) {
-  if (!selectedFile && !analysis) {
+export default function InsightPanel({
+  analysis,
+  impactAnalysis,
+  impactType = "modify",
+  impactLoading = false,
+  onRunImpactSimulation,
+  isLoading,
+  selectedFile,
+}) {
+  if (!selectedFile) {
     return (
       <aside className="w-[380px] h-full border-l border-slate-800 bg-slate-900/10 backdrop-blur-sm flex items-center justify-center p-8 text-center text-slate-500 text-xs italic shrink-0">
         <div className="flex flex-col items-center gap-4">
@@ -152,6 +160,96 @@ export default function InsightPanel({ analysis, isLoading, selectedFile }) {
               </section>
             )}
 
+            {/* STRUCTURES */}
+            <section className="space-y-6 pt-4 border-t border-slate-800/50">
+               <h3 className="text-[10px] uppercase font-bold tracking-[0.2em] text-blue-400/80">Structural anatomy</h3>
+              <div className="space-y-5">
+                {analysis.functions?.length > 0 && (
+                  <div className="space-y-2.5">
+                    <h4 className="text-[9px] uppercase font-bold text-slate-600 tracking-widest pl-1">Identified Functions</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {analysis.functions.map((f, i) => (
+                        <span key={i} className="px-2 py-1 bg-slate-950 border border-slate-800 text-slate-400 text-[11px] font-mono rounded-lg hover:border-blue-500/30 hover:text-slate-200 transition-all cursor-default">
+                          {f}()
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {analysis.classes?.length > 0 && (
+                  <div className="space-y-2.5">
+                    <h4 className="text-[9px] uppercase font-bold text-slate-600 tracking-widest pl-1">Object Classes</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {analysis.classes.map((c, i) => (
+                        <span key={i} className="px-2 py-1 bg-slate-950 border border-slate-800 text-amber-400/70 text-[11px] font-mono rounded-lg font-bold shadow-sm hover:scale-105 transition-all">
+                          {c}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* IMPACT SIMULATOR (PHASE 1) */}
+            {impactAnalysis && (
+              <section className="space-y-4 pt-4 border-t border-slate-800/50">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-[10px] uppercase font-bold tracking-[0.2em] text-amber-400/90">Impact Simulator</h3>
+                  <span className="text-[12px] font-black font-mono text-amber-300">{impactAnalysis?.impact?.score || 0}%</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <select
+                    value={impactType}
+                    onChange={(e) => onRunImpactSimulation?.(e.target.value)}
+                    className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-[11px] text-slate-300 outline-none focus:border-amber-500/60"
+                  >
+                    <option value="modify">Modify Node</option>
+                    <option value="delete">Delete Node</option>
+                    <option value="create">Create Node</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => onRunImpactSimulation?.(impactType)}
+                    disabled={impactLoading}
+                    className="px-3 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wide bg-amber-500/20 border border-amber-500/40 text-amber-300 disabled:opacity-50"
+                  >
+                    {impactLoading ? "Simulating..." : "Simulate"}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-[10px]">
+                  <div className="bg-slate-950 border border-slate-800 rounded-lg p-2">
+                    <div className="text-slate-500 uppercase tracking-wider">Blast Radius</div>
+                    <div className="text-slate-200 font-bold text-[12px] mt-1">{impactAnalysis?.blast_radius?.total_impacted_nodes || 0} nodes</div>
+                  </div>
+                  <div className="bg-slate-950 border border-slate-800 rounded-lg p-2">
+                    <div className="text-slate-500 uppercase tracking-wider">Impact Level</div>
+                    <div className="text-amber-300 font-bold text-[12px] mt-1">{impactAnalysis?.impact?.level || "LOW"}</div>
+                  </div>
+                </div>
+
+                <div className="space-y-2.5">
+                  <h4 className="text-[9px] uppercase font-bold text-slate-600 tracking-widest">Top Affected Nodes</h4>
+                  {impactAnalysis?.top_impacted_nodes?.length > 0 ? (
+                    <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                      {impactAnalysis.top_impacted_nodes.slice(0, 8).map((item) => (
+                        <div key={item.node_id} className="p-2.5 rounded-lg border border-slate-800 bg-slate-950/70">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[11px] text-slate-200 font-semibold truncate" title={item.label}>{item.label}</span>
+                            <span className="text-[10px] font-mono text-amber-300">{item.impact_score}%</span>
+                          </div>
+                          <div className="text-[9px] text-slate-500 mt-1 truncate" title={item.path}>{item.path}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-slate-500 italic">No impacted nodes detected.</div>
+                  )}
+                </div>
+              </section>
+            )}
           </>
         ) : (
           <div className="flex flex-col items-center justify-center p-8 text-center text-slate-600 text-[11px] uppercase tracking-widest leading-loose mt-20 opacity-50">

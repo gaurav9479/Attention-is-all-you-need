@@ -36,5 +36,13 @@ export const fetchMcpNode = async (repoName, nodeId, mode = "normal") => {
 
 export const queryMcp = async (repoName, queryParams) => {
   const { data } = await apiClient.post("/mcp/query", { repo: repoName, ...queryParams });
+export const fetchImpactSimulation = async ({ repo, nodeId, changeType = "modify", maxDepth = 3, limit = 10 }) => {
+  const { data } = await apiClient.post("/mcp/impact", {
+    repo,
+    nodeId,
+    changeType,
+    maxDepth,
+    limit,
+  });
   return data;
 };
