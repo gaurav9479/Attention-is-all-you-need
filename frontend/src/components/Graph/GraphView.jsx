@@ -6,7 +6,18 @@ import Loader from "../UI/Loader";
 
 const NODE_TYPES = { custom: CustomNode };
 
-function GraphInner({ nodes, edges, loading, search = "", levelFilter, onNodesChange, onEdgesChange, onNodeClick }) {
+function GraphInner({
+  nodes,
+  edges,
+  loading,
+  search = "",
+  levelFilter,
+  highlightNodeIds = [],
+  highlightEdgeIds = [],
+  onNodesChange,
+  onEdgesChange,
+  onNodeClick,
+}) {
   const { fitView } = useReactFlow();
   const [hoveredEdge, setHoveredEdge] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
@@ -14,6 +25,7 @@ function GraphInner({ nodes, edges, loading, search = "", levelFilter, onNodesCh
   const visibleNodes = useMemo(() => {
     const lowerSearch = (search || "").toLowerCase();
     return nodes.map((n) => {
+      const isImpactHighlighted = highlightNodeIds.includes(n.id);
       // Toggle hidden status based on search
       let isHidden = !n.data?.label?.toLowerCase().includes(lowerSearch);
       
@@ -21,14 +33,36 @@ function GraphInner({ nodes, edges, loading, search = "", levelFilter, onNodesCh
       if (levelFilter === "files" && n.data?.type !== "file") {
         isHidden = true;
       }
-      return { ...n, hidden: isHidden };
+      return {
+        ...n,
+        hidden: isHidden,
+        style: isImpactHighlighted
+          ? {
+              ...(n.style || {}),
+              border: "1px solid #f59e0b",
+              boxShadow: "0 0 18px rgba(245,158,11,0.38)",
+            }
+          : n.style,
+      };
     });
-  }, [nodes, search, levelFilter]);
+  }, [nodes, search, levelFilter, highlightNodeIds]);
 
   const visibleEdges = useMemo(() => {
     if (levelFilter === "files") return []; // No edges when only viewing files 
     
     return edges.map((edge) => {
+      if (highlightEdgeIds.includes(edge.id)) {
+        return {
+          ...edge,
+          animated: true,
+          style: { stroke: "#ef4444", strokeWidth: 2.8 },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: "#ef4444",
+          },
+        };
+      }
+
       // Apply specialized styling for imports
       if (edge.data?.type === 'import') {
         return {
@@ -43,7 +77,7 @@ function GraphInner({ nodes, edges, loading, search = "", levelFilter, onNodesCh
       }
       return edge;
     });
-  }, [edges, levelFilter]);
+  }, [edges, levelFilter, highlightEdgeIds]);
 
   // Refit view smoothly when filtering changes massively
   useEffect(() => {

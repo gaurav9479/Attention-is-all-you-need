@@ -1,6 +1,13 @@
 import { useState, useCallback, useEffect } from "react";
 import { applyNodeChanges, applyEdgeChanges } from "reactflow";
-import { fetchGraph, fetchFileContent, fetchSummary, cloneRepo, fetchTree } from "../services/api";
+import {
+  fetchGraph,
+  fetchFileContent,
+  fetchSummary,
+  cloneRepo,
+  fetchTree,
+  fetchImpactSimulation,
+} from "../services/api";
 import { getLayoutedElements } from "../utils/layout";
 
 import Navbar from "../components/Layout/Navbar";
@@ -18,8 +25,39 @@ export default function Analyzer() {
   const [levelFilter, setLevelFilter] = useState("all");
   
   const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [analysis, setAnalysis] = useState(null);
+  const [impactAnalysis, setImpactAnalysis] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isImpactLoading, setIsImpactLoading] = useState(false);
+  const [impactChangeType, setImpactChangeType] = useState("modify");
+  const [highlightNodeIds, setHighlightNodeIds] = useState([]);
+  const [highlightEdgeIds, setHighlightEdgeIds] = useState([]);
+
+  const runImpactSimulation = useCallback(
+    async ({ nodeId, changeType = "modify" }) => {
+      if (!repoName) return null;
+
+      setIsImpactLoading(true);
+      try {
+        const impact = await fetchImpactSimulation({
+          repo: repoName,
+          nodeId: nodeId || null,
+          changeType,
+          maxDepth: 3,
+          limit: 10,
+        });
+
+        setImpactAnalysis(impact);
+        setHighlightNodeIds(impact?.ui_hints?.highlight_node_ids || []);
+        setHighlightEdgeIds(impact?.ui_hints?.highlight_edge_ids || []);
+        return impact;
+      } finally {
+        setIsImpactLoading(false);
+      }
+    },
+    [repoName]
+  );
 
   const handleAnalyze = async (repoUrl, depth) => {
     setIsLoading(true);
@@ -55,19 +93,42 @@ export default function Analyzer() {
   const onNodeClick = useCallback(async (_, node) => {
     const fileData = { name: node.data.label, path: node.data.path };
     setSelectedFile(fileData);
+    setSelectedNodeId(node.id || null);
+    setImpactChangeType("modify");
     setIsAnalyzing(true);
     setAnalysis(null);
+    setImpactAnalysis(null);
+    setHighlightNodeIds([]);
+    setHighlightEdgeIds([]);
 
     try {
       const codeResp = await fetchFileContent(node.data.path, repoName);
-      const summary = await fetchSummary(node.data.label, codeResp.content);
+
+      const [summary, impact] = await Promise.all([
+        fetchSummary(node.data.label, codeResp.content),
+        runImpactSimulation({ nodeId: node.id || null, changeType: "modify" }),
+      ]);
+
       setAnalysis(summary);
+      if (!impact) {
+        setImpactAnalysis(null);
+      }
     } catch (err) {
       console.error("AI Analysis failed:", err);
     } finally {
       setIsAnalyzing(false);
     }
-  }, [repoName]);
+  }, [repoName, runImpactSimulation]);
+
+  const handleRunImpactSimulation = useCallback(
+    async (nextChangeType) => {
+      if (!selectedFile || !repoName) return;
+      const type = nextChangeType || impactChangeType;
+      setImpactChangeType(type);
+      await runImpactSimulation({ nodeId: selectedNodeId, changeType: type });
+    },
+    [selectedFile, repoName, impactChangeType, selectedNodeId, runImpactSimulation]
+  );
 
   const onNodesChange = useCallback(
     (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
@@ -96,6 +157,8 @@ export default function Analyzer() {
              edges={edges}
              loading={isLoading}
              levelFilter={levelFilter}
+             highlightNodeIds={highlightNodeIds}
+             highlightEdgeIds={highlightEdgeIds}
              onNodesChange={onNodesChange}
              onEdgesChange={onEdgesChange}
              onNodeClick={onNodeClick}
@@ -105,6 +168,10 @@ export default function Analyzer() {
         <InsightPanel 
           selectedFile={selectedFile}
           analysis={analysis}
+          impactAnalysis={impactAnalysis}
+          impactType={impactChangeType}
+          impactLoading={isImpactLoading}
+          onRunImpactSimulation={handleRunImpactSimulation}
           isLoading={isAnalyzing}
         />
       </div>

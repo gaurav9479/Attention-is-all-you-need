@@ -1,4 +1,4 @@
-import { analyzeWithMcp } from "../services/mcpService.js";
+import { analyzeWithMcp, simulateImpactWithMcp } from "../services/mcpService.js";
 
 export function queryMcp(req, res) {
   try {
@@ -46,4 +46,24 @@ export function getMcpNode(req, res) {
 
 export function mcpHealth(_req, res) {
   return res.json({ status: "ok", service: "mcp" });
+}
+
+export function simulateImpact(req, res) {
+  try {
+    const { repo, repoPath, nodeId, changeType, maxDepth, limit } = req.body || {};
+
+    const payload = simulateImpactWithMcp({
+      repoName: repo || "repo1",
+      repoPath: repoPath || null,
+      nodeId: nodeId || null,
+      changeType: changeType || "modify",
+      maxDepth: Number(maxDepth) > 0 ? Number(maxDepth) : 3,
+      limit: Number(limit) > 0 ? Number(limit) : 10,
+    });
+
+    return res.json(payload);
+  } catch (err) {
+    console.error("[MCP] impact failure:", err.message);
+    return res.status(500).json({ error: "MCP impact simulation failed", detail: err.message });
+  }
 }

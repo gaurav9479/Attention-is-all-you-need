@@ -28,3 +28,14 @@ export const fetchSummary = async (filename, code) => {
   const { data } = await apiClient.post("/summary", { filename, code });
   return data;
 };
+
+export const fetchImpactSimulation = async ({ repo, nodeId, changeType = "modify", maxDepth = 3, limit = 10 }) => {
+  const { data } = await apiClient.post("/mcp/impact", {
+    repo,
+    nodeId,
+    changeType,
+    maxDepth,
+    limit,
+  });
+  return data;
+};

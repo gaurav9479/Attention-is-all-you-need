@@ -33,6 +33,12 @@ function riskLevel(score) {
   return "LOW";
 }
 
+function impactLevel(score) {
+  if (score >= 75) return "HIGH";
+  if (score >= 40) return "MED";
+  return "LOW";
+}
+
 function getRepoDir(repoName = "repo1", repoPath = null) {
   if (repoPath && fs.existsSync(repoPath) && fs.statSync(repoPath).isDirectory()) {
     return repoPath;
@@ -68,6 +74,169 @@ function createNode({ id, type, label, relativePath, text, parentId = null }) {
     parentId,
     text,
     tokens: tokenize(`${label} ${relativePath} ${text}`),
+  };
+}
+
+export function simulateImpactWithMcp({
+  repoName = "repo1",
+  repoPath = null,
+  nodeId = null,
+  changeType = "modify",
+  maxDepth = 3,
+  limit = 10,
+}) {
+  const model = buildModel(repoName, repoPath);
+  if (!model.repoDir) {
+    return {
+      meta: { repo: repoName, found: false },
+      summary: "Repository was not found.",
+      focus_node: null,
+      impact: { score: 0, level: "LOW", change_type: changeType },
+      blast_radius: { total_impacted_nodes: 0, high: 0, medium: 0, low: 0 },
+      top_impacted_nodes: [],
+      ui_hints: { highlight_node_ids: [], highlight_edge_ids: [], focus_camera_node_id: null },
+    };
+  }
+
+  const localRiskMap = new Map(model.nodes.map((node) => [node.id, computeLocalRisk(node)]));
+  const propagatedRiskMap = computePropagatedRisk(model, localRiskMap);
+
+  let focus = nodeId ? model.nodeById.get(nodeId) : null;
+  if (!focus) {
+    focus = [...model.nodes].sort(
+      (a, b) => (propagatedRiskMap.get(b.id) || 0) - (propagatedRiskMap.get(a.id) || 0)
+    )[0] || null;
+  }
+
+  if (!focus) {
+    return {
+      meta: { repo: repoName, found: true, node_count: model.nodes.length, edge_count: model.edges.length },
+      summary: "No nodes available for impact simulation.",
+      focus_node: null,
+      impact: { score: 0, level: "LOW", change_type: changeType },
+      blast_radius: { total_impacted_nodes: 0, high: 0, medium: 0, low: 0 },
+      top_impacted_nodes: [],
+      ui_hints: { highlight_node_ids: [], highlight_edge_ids: [], focus_camera_node_id: null },
+    };
+  }
+
+  const edgeWeight = {
+    semantic_call: 0.84,
+    import: 0.72,
+    contains: 0.4,
+  };
+
+  const impactMap = new Map([[focus.id, 100]]);
+  const distanceMap = new Map([[focus.id, 0]]);
+  const edgeTrail = new Set();
+  const queue = [{ id: focus.id, score: 100, depth: 0 }];
+
+  while (queue.length) {
+    const cur = queue.shift();
+    if (cur.depth >= maxDepth || cur.score <= 8) continue;
+
+    const neighbors = [
+      ...(model.adjacencyOut.get(cur.id) || []).map((edge) => ({ edge, next: edge.target })),
+      ...(model.adjacencyIn.get(cur.id) || []).map((edge) => ({ edge, next: edge.source })),
+    ];
+
+    for (const { edge, next } of neighbors) {
+      const decay = edgeWeight[edge.type] || 0.55;
+      const nextScore = cur.score * decay;
+      const prev = impactMap.get(next) || 0;
+      if (nextScore > prev) {
+        impactMap.set(next, Math.min(100, nextScore));
+        distanceMap.set(next, Math.min(distanceMap.get(next) ?? Number.MAX_SAFE_INTEGER, cur.depth + 1));
+        edgeTrail.add(edge.id);
+      }
+
+      if ((distanceMap.get(next) ?? Number.MAX_SAFE_INTEGER) > cur.depth + 1 && cur.depth + 1 <= maxDepth) {
+        queue.push({ id: next, score: nextScore, depth: cur.depth + 1 });
+      }
+    }
+  }
+
+  const impactedNodes = [...impactMap.entries()]
+    .map(([id, score]) => ({
+      node: model.nodeById.get(id),
+      impact_score: Number(score.toFixed(2)),
+      distance: distanceMap.get(id) || 0,
+      propagated_risk: Number((propagatedRiskMap.get(id) || 0).toFixed(2)),
+    }))
+    .filter((x) => x.node)
+    .sort((a, b) => b.impact_score - a.impact_score);
+
+  const topImpacted = impactedNodes
+    .filter((item) => item.node.id !== focus.id)
+    .slice(0, limit)
+    .map((item) => ({
+      node_id: item.node.id,
+      label: item.node.label,
+      type: item.node.type,
+      path: item.node.path,
+      impact_score: item.impact_score,
+      propagated_risk: item.propagated_risk,
+      distance: item.distance,
+      impact_level: impactLevel(item.impact_score),
+    }));
+
+  const bucket = { high: 0, medium: 0, low: 0 };
+  for (const item of impactedNodes) {
+    const lvl = impactLevel(item.impact_score);
+    if (lvl === "HIGH") bucket.high += 1;
+    else if (lvl === "MED") bucket.medium += 1;
+    else bucket.low += 1;
+  }
+
+  const aggregateImpact = impactedNodes.slice(0, Math.max(5, limit));
+  const aggregateScore = aggregateImpact.length
+    ? aggregateImpact.reduce((acc, cur) => acc + cur.impact_score, 0) / aggregateImpact.length
+    : 0;
+
+  const focusRisk = propagatedRiskMap.get(focus.id) || 0;
+  const impactScore = Number(Math.min(100, aggregateScore * 0.75 + focusRisk * 0.25).toFixed(2));
+
+  return {
+    meta: {
+      repo: repoName,
+      found: true,
+      node_count: model.nodes.length,
+      edge_count: model.edges.length,
+      built_at: model.builtAt,
+      cache_hit: model.cacheHit,
+      phase: 1,
+    },
+    summary: `Impact simulation for ${focus.type} '${focus.label}' computed blast radius using cross-file dependencies.`,
+    focus_node: {
+      node_id: focus.id,
+      label: focus.label,
+      type: focus.type,
+      path: focus.path,
+    },
+    impact: {
+      score: impactScore,
+      level: impactLevel(impactScore),
+      change_type: changeType,
+      max_depth: maxDepth,
+      rationale: "Impact decays across dependency edges and is blended with propagated risk.",
+    },
+    blast_radius: {
+      total_impacted_nodes: impactedNodes.length,
+      high: bucket.high,
+      medium: bucket.medium,
+      low: bucket.low,
+    },
+    top_impacted_nodes: topImpacted,
+    ui_hints: {
+      highlight_node_ids: unique([focus.id, ...topImpacted.map((n) => n.node_id)]),
+      highlight_edge_ids: [...edgeTrail].slice(0, 40),
+      focus_camera_node_id: focus.id,
+      severity_palette: {
+        high: "#ef4444",
+        medium: "#f59e0b",
+        low: "#22c55e",
+      },
+    },
   };
 }
 
