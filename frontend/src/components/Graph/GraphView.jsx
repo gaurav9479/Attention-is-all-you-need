@@ -21,9 +21,46 @@ function GraphInner({
   const { fitView } = useReactFlow();
   const [hoveredEdge, setHoveredEdge] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const [impactChain, setImpactChain] = useState({ nodes: new Set(), edges: new Set() });
+
+  // Reset impact chain if nodes change (e.g. new repo)
+  useEffect(() => {
+    setImpactChain({ nodes: new Set(), edges: new Set() });
+  }, [nodes.length]);
+
+  const handleNodeClick = (evt, node) => {
+    if (onNodeClick) onNodeClick(evt, node);
+
+    const downstreamNodes = new Set([node.id]);
+    const downstreamEdges = new Set();
+    const queue = [node.id];
+
+    while (queue.length > 0) {
+      const currentId = queue.shift();
+      edges.forEach(edge => {
+        if (edge.source === currentId && !downstreamNodes.has(edge.target)) {
+          downstreamNodes.add(edge.target);
+          downstreamEdges.add(edge.id);
+          queue.push(edge.target);
+        }
+      });
+    }
+
+    setImpactChain({ nodes: downstreamNodes, edges: downstreamEdges });
+
+    // Focus camera on the found chain
+    setTimeout(() => {
+      const nodesToFit = nodes.filter(n => downstreamNodes.has(n.id));
+      if (nodesToFit.length > 0) {
+        fitView({ nodes: nodesToFit, duration: 800, padding: 0.3 });
+      }
+    }, 50);
+  };
 
   const visibleNodes = useMemo(() => {
     const lowerSearch = (search || "").toLowerCase();
+    const hasImpact = impactChain.nodes.size > 1;
+
     return nodes.map((n) => {
       const isImpactHighlighted = highlightNodeIds.includes(n.id);
       // Toggle hidden status based on search
@@ -46,9 +83,32 @@ function GraphInner({
       };
     });
   }, [nodes, search, levelFilter, highlightNodeIds]);
+      const label = n.data?.label || "";
+      const isHidden = !label.toLowerCase().includes(lowerSearch) || 
+                       (levelFilter === "files" && n.data?.type !== "file");
+
+      const isPartOfImpact = impactChain.nodes.has(n.id);
+      
+      return { 
+        ...n, 
+        hidden: isHidden,
+        data: {
+           ...n.data,
+           isImpact: isPartOfImpact && hasImpact
+        },
+        style: {
+          ...n.style,
+          opacity: hasImpact ? (isPartOfImpact ? 1 : 0.15) : 1,
+          filter: hasImpact ? (isPartOfImpact ? 'none' : 'grayscale(100%) blur(1px)') : 'none',
+          transition: 'all 0.4s ease'
+        }
+      };
+    });
+  }, [nodes, search, levelFilter, impactChain]);
 
   const visibleEdges = useMemo(() => {
-    if (levelFilter === "files") return []; // No edges when only viewing files 
+    if (levelFilter === "files") return []; 
+    const hasImpact = impactChain.edges.size > 0;
     
     return edges.map((edge) => {
       if (highlightEdgeIds.includes(edge.id)) {
@@ -78,22 +138,54 @@ function GraphInner({
       return edge;
     });
   }, [edges, levelFilter, highlightEdgeIds]);
+      const isPartOfImpact = impactChain.edges.has(edge.id);
+      const isImport = edge.data?.type === 'import';
+      const isHierarchy = edge.data?.type === 'hierarchy';
+      const isRootEdge = edge.id.startsWith('root-to-');
 
-  // Refit view smoothly when filtering changes massively
+      // High visibility neon default colors
+      let defaultStroke = '#06b6d4'; // Cyan
+      if (isImport) defaultStroke = '#f59e0b'; // Amber
+      if (isHierarchy) defaultStroke = '#10b981'; // Emerald
+      if (isRootEdge) defaultStroke = '#ef4444'; // Red
+
+      return {
+        ...edge,
+        animated: isPartOfImpact || isImport,
+        style: { 
+          ...edge.style,
+          stroke: hasImpact ? (isPartOfImpact ? defaultStroke : '#1e293b') : (edge.style?.stroke || defaultStroke),
+          opacity: hasImpact ? (isPartOfImpact ? 1 : 0.05) : (edge.style?.opacity || 0.8),
+          strokeWidth: hasImpact ? (isPartOfImpact ? 4 : 1) : (edge.style?.strokeWidth || 2.5),
+        },
+        markerEnd: { 
+          type: MarkerType.ArrowClosed, 
+          color: hasImpact ? (isPartOfImpact ? defaultStroke : '#1e293b') : (edge.style?.stroke || defaultStroke) 
+        },
+      };
+    });
+  }, [edges, levelFilter, impactChain]);
+
+  // Refit view whenever major data changes
   useEffect(() => {
-    setTimeout(() => {
-       fitView({ duration: 800, padding: 0.2 });
-    }, 50);
-  }, [visibleNodes.length, levelFilter, fitView]);
+    if (nodes.length > 0) {
+      const timer = setTimeout(() => {
+         fitView({ duration: 1000, padding: 0.2 });
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [nodes.length, levelFilter, fitView]);
 
   if (loading) {
-    return <Loader text="Structuring Graph Landscape..." />;
+    return <Loader text="Assembling 3D Anti-Gravity Landscape..." />;
   }
 
   const onEdgeMouseEnter = (evt, edge) => {
     if (edge.data?.type === 'import') {
        setTooltipPos({ x: evt.clientX, y: evt.clientY });
-       setHoveredEdge(`${edge.source} imports ${edge.target}`);
+       const source = edge.source.split('/').pop() || 'Module';
+       const target = edge.target.split('/').pop() || 'Module';
+       setHoveredEdge(`${source} imports ${target}`);
     }
   };
 
@@ -102,43 +194,47 @@ function GraphInner({
   };
 
   return (
-    <div className="w-full h-full relative">
+    <div className="w-full h-full relative overflow-hidden bg-[#09090b]">
       <ReactFlow
         nodes={visibleNodes}
         edges={visibleEdges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onNodeClick={onNodeClick}
+        onNodeClick={handleNodeClick}
         onEdgeMouseEnter={onEdgeMouseEnter}
         onEdgeMouseLeave={onEdgeMouseLeave}
         nodeTypes={NODE_TYPES}
         fitView
-        className="bg-slate-950"
+        className="react-flow-3d"
         proOptions={{ hideAttribution: true }}
-        minZoom={0.1}
+        minZoom={0.01}
+        maxZoom={4}
+        defaultEdgeOptions={{ type: 'smoothstep' }}
       >
-        <Background color="#334155" gap={16} />
-        <Controls className="bg-slate-900 border-slate-700 fill-slate-300" />
+        <Background color="#1e293b" gap={24} size={1} variant="lines" />
+        <Controls className="bg-slate-900 border-slate-800 fill-slate-400" />
         <MiniMap 
           nodeColor={(n) => {
-            if (n.data?.type === "file") return "#3b82f6";
-            if (n.data?.type === "function") return "#22c55e";
-            if (n.data?.type === "class") return "#a855f7";
-            return "#475569";
+            if (n.data?.layer === 0) return "#f59e0b";
+            if (n.data?.layer === 1) return "#3b82f6";
+            return "#22c55e";
           }}
           nodeStrokeWidth={3}
-          nodeBorderRadius={4}
-          maskColor="rgba(15, 23, 42, 0.7)"
-          className="bg-slate-900 border border-slate-700 rounded-lg shadow-xl"
+          nodeBorderRadius={8}
+          maskColor="rgba(9, 9, 11, 0.8)"
+          className="bg-slate-950 border border-slate-800 rounded-xl shadow-2xl"
         />
       </ReactFlow>
 
       {hoveredEdge && (
         <div 
-          className="fixed z-[100] px-3 py-1.5 bg-slate-900 border border-amber-500/50 text-amber-500 text-[11px] font-bold rounded-md shadow-2xl pointer-events-none transform -translate-x-1/2 -translate-y-full mt-[-10px]"
+          className="fixed z-[999] px-4 py-2 bg-slate-900 border-2 border-amber-500/50 text-amber-500 text-xs font-bold rounded-xl shadow-2xl pointer-events-none transform -translate-x-1/2 -translate-y-full mt-[-15px] backdrop-blur-md"
           style={{ left: tooltipPos.x, top: tooltipPos.y }}
         >
-          {hoveredEdge}
+          <div className="flex items-center gap-2">
+            <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+            {hoveredEdge}
+          </div>
         </div>
       )}
     </div>

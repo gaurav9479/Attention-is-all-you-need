@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-export default function Navbar({ onAnalyze, isLoading }) {
+export default function Navbar({ onAnalyze, isLoading, uiMode, onModeToggle }) {
   const [url, setUrl] = useState("");
   const [depth, setDepth] = useState("all");
 
@@ -34,7 +34,22 @@ export default function Navbar({ onAnalyze, isLoading }) {
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-6">
+        {/* UI Mode Toggle */}
+        <div className="flex items-center gap-3 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-full shadow-inner-dark">
+           <span className={`text-[10px] font-bold uppercase tracking-widest transition-colors ${uiMode === 'normal' ? 'text-amber-500' : 'text-slate-500'}`}>Normal</span>
+           <button 
+             onClick={() => onModeToggle(uiMode === 'normal' ? 'deep' : 'normal')}
+             className="relative w-10 h-5 bg-slate-950 rounded-full flex items-center p-1 border border-slate-700 transition-colors focus:outline-none"
+           >
+              <div 
+                className={`w-3.5 h-3.5 rounded-full shadow-md transform transition-transform duration-300 ease-in-out ${uiMode === 'deep' ? 'translate-x-4 bg-purple-500 shadow-[0_0_10px_#a855f7]' : 'translate-x-0 bg-amber-500 shadow-[0_0_10px_#f59e0b]'}`}
+              />
+           </button>
+           <span className={`text-[10px] font-bold uppercase tracking-widest transition-colors ${uiMode === 'deep' ? 'text-purple-400' : 'text-slate-500'}`}>Cosmic</span>
+        </div>
+
+        {/* Depth Filter */}
         <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800">
            <button 
              onClick={() => setDepth("all")}

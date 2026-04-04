@@ -1,59 +1,92 @@
 export const getLayoutedElements = (nodes, edges) => {
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
   
-  const fileNodes = nodes.filter((n) => n.data.type === "file");
-  const subNodes = nodes.filter((n) => n.data.type !== "file");
+  // 1. Filter out any existing root nodes to prevent stacking
+  const existingNodes = nodes.filter(n => n.id !== 'root-node');
 
-  // 1. PROJECT ROOT
+  // Add REPOSITORY ROOT (Anchor)
   const rootNode = {
     id: 'root-node',
     type: 'custom',
     position: { x: 400, y: 0 },
-    data: { label: 'Repository Root', type: 'root' }
+    data: { label: 'Repository Root', type: 'root', layer: 0 }
   };
+
+  const finalNodes = [rootNode, ...existingNodes];
+
+  // VERTICAL LAYER CONSTANTS
+  const LAYER_Y = {
+    0: 160,   // Gateway (Root/Server)
+    1: 520,   // Structure (Modules/Classes)
+    2: 1000   // Atomic (Functions/Utils)
+  };
+
+  const CLUSTER_WIDTH = isMobile ? 380 : 580;
+  const NODE_SPACING_X = 250;
+
+  // Group nodes by their directory to create "Sectors"
+  const sectors = {};
+  finalNodes.forEach(node => {
+     if (node.id === 'root-node') return;
+     const dir = node.data?.path ? node.data.path.split('/').slice(0, -1).join('/') || 'root' : 'root';
+     if (!sectors[dir]) sectors[dir] = [];
+     sectors[dir].push(node);
+  });
+
+  const sectorNames = Object.keys(sectors);
   
-  // 2. FILES (LEVEL 1)
-  const FILE_SPACING_X = isMobile ? 300 : 450;
-  const FILE_Y = 200;
-  
-  fileNodes.forEach((node, i) => {
-    const totalFiles = fileNodes.length;
-    const startX = 400 - ((totalFiles - 1) * FILE_SPACING_X) / 2;
-    node.position = { x: startX + i * FILE_SPACING_X, y: FILE_Y };
+  sectorNames.forEach((sectorName, sIndex) => {
+    const sectorNodes = sectors[sectorName];
+    const sectorXBase = sIndex * CLUSTER_WIDTH;
+
+    const layerCounts = { 0: 0, 1: 0, 2: 0 };
     
-    // Add edge from root to file
-    edges.push({
-        id: `root-to-${node.id}`,
-        source: 'root-node',
-        target: node.id,
-        animated: true,
-        style: { stroke: '#334155', strokeWidth: 1 }
+    sectorNodes.forEach((node) => {
+      const layer = node.data?.layer ?? 1;
+      const xOffset = layerCounts[layer] * NODE_SPACING_X;
+      
+      node.position = {
+        x: sectorXBase + xOffset - (CLUSTER_WIDTH / 2),
+        y: LAYER_Y[layer] + (Math.random() * 25)
+      };
+
+      layerCounts[layer]++;
+
+      // Auto-connect layer 0 nodes to the root
+      if (layer === 0 && node.id !== 'root-node') {
+        edges.push({
+          id: `root-to-${node.id}`,
+          source: 'root-node',
+          target: node.id,
+          animated: true,
+          style: { stroke: '#1e293b', strokeWidth: 1, opacity: 0.2 }
+        });
+      }
     });
   });
 
-  // 3. ATOMS (LEVEL 2) - Functions/Classes
-  subNodes.forEach((node) => {
-    const edge = edges.find((e) => e.target === node.id);
-    if (edge) {
-      const parentFile = fileNodes.find((n) => n.id === edge.source);
-      if (parentFile) {
-        const peers = subNodes.filter((n) => {
-           const e = edges.find((ed) => ed.target === n.id);
-           return e && e.source === parentFile.id;
-        });
-        const index = peers.findIndex((n) => n.id === node.id);
+  const styledEdges = edges.map(edge => {
+    const isImport = edge.data?.type === 'import';
+    const isHierarchy = edge.data?.type === 'hierarchy';
+    const isRootEdge = edge.id.startsWith('root-to-');
 
-        const SPACING_X = 140;
-        const SPACING_Y = 120 + Math.floor(index / 2) * 60;
-        const offset = Math.ceil(index / 2) * (index % 2 === 0 ? 1 : -1);
+    // High visibility neon colors for the "threads"
+    let strokeColor = '#06b6d4'; // Cyan default
+    if (isImport) strokeColor = '#f59e0b'; // Amber for imports
+    if (isHierarchy) strokeColor = '#10b981'; // Emerald for functions/classes
+    if (isRootEdge) strokeColor = '#ef4444'; // Red for root connections
 
-        node.position = {
-          x: parentFile.position.x + offset * SPACING_X,
-          y: parentFile.position.y + SPACING_Y,
-        };
+    return {
+      ...edge,
+      animated: isImport || edge.animated,
+      style: {
+        stroke: strokeColor,
+        strokeWidth: isImport ? 3 : 2.5,
+        opacity: isRootEdge ? 0.7 : (isHierarchy ? 0.8 : 1),
+        ...edge.style
       }
-    }
+    };
   });
 
-  return { nodes: [rootNode, ...nodes], edges };
+  return { nodes: finalNodes, edges: styledEdges };
 };
