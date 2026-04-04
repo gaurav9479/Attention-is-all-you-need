@@ -4,6 +4,7 @@ import cloneRoute from "./routes/clone.route.js";
 import fileRoute from "./routes/file.route.js";
 import aiRoute from "./routes/ai.route.js";
 import graphRoute from "./routes/graph.route.js";
+import mcpRoute from "./routes/mcp.route.js";
 
 const app = express();
 
@@ -16,6 +17,7 @@ app.use("/api", cloneRoute);
 app.use("/api", fileRoute);
 app.use("/api", aiRoute);
 app.use("/api", graphRoute);
+app.use("/api", mcpRoute);
 
 // Health check
 app.get("/", (req, res) => {
