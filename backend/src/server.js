@@ -1,8 +1,9 @@
 import express from "express";
 import cors from "cors";
-import cloneRoute from "./src/routes/clone.route.js";
-import fileRoute from "./src/routes/file.route.js";
-import aiRoute from "./src/routes/ai.route.js";
+import cloneRoute from "./routes/clone.route.js";
+import fileRoute from "./routes/file.route.js";
+import aiRoute from "./routes/ai.route.js";
+import graphRoute from "./routes/graph.route.js";
 
 const app = express();
 
@@ -14,6 +15,7 @@ app.use(express.json());
 app.use("/api", cloneRoute);
 app.use("/api", fileRoute);
 app.use("/api", aiRoute);
+app.use("/api", graphRoute);
 
 // Health check
 app.get("/", (req, res) => {

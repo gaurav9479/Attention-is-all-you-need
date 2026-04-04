@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-// 📂 Get all files
+
 export function readFiles(dir, filesList = []) {
   const files = fs.readdirSync(dir);
 
@@ -20,7 +20,17 @@ export function readFiles(dir, filesList = []) {
   return filesList;
 }
 
-// 📄 Get file content
+export function getFiles(req, res) {
+  try {
+    // Assuming everything is cloned into ./repos/repo1 as per your clone controller
+    const allFiles = readFiles("./repos/repo1");
+    res.json(allFiles);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to read files" });
+  }
+}
+
 export function getFileContent(req, res) {
   const filePath = req.query.path;
 
