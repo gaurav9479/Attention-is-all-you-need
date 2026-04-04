@@ -242,6 +242,59 @@ export default function InsightPanel({
                     </div>
                   </div>
                 )}
+
+                {impactAnalysis?.execution_confidence && (
+                  <div className="bg-slate-950 border border-slate-800 rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] uppercase tracking-widest text-slate-500 font-bold">Execution Confidence</span>
+                      <span className="text-[11px] font-black font-mono text-sky-300">{impactAnalysis.execution_confidence.score}%</span>
+                    </div>
+                    <div className="text-[11px] text-slate-300 leading-snug">{impactAnalysis.execution_confidence.note}</div>
+                  </div>
+                )}
+
+                {impactAnalysis?.rollout_plan?.length > 0 && (
+                  <div className="space-y-2.5">
+                    <h4 className="text-[9px] uppercase font-bold text-slate-600 tracking-widest">Rollout Plan</h4>
+                    <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                      {impactAnalysis.rollout_plan.map((step) => (
+                        <div key={step.stage} className="p-2.5 rounded-lg border border-slate-800 bg-slate-950/70">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] uppercase tracking-wide font-bold text-slate-300">Stage {step.stage}: {step.title}</span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-1">{step.objective}</div>
+                          <ul className="mt-2 space-y-1">
+                            {(step.actions || []).slice(0, 2).map((action, idx) => (
+                              <li key={idx} className="text-[11px] text-slate-200 leading-snug">- {action}</li>
+                            ))}
+                          </ul>
+                          <div className="text-[10px] text-emerald-300/90 mt-2">Gate: {step.gate}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {impactAnalysis?.rollback_plan && (
+                  <div className="space-y-2.5">
+                    <h4 className="text-[9px] uppercase font-bold text-slate-600 tracking-widest">Rollback Strategy</h4>
+                    <div className="p-2.5 rounded-lg border border-slate-800 bg-slate-950/70 space-y-2">
+                      <div className="text-[10px] text-slate-400 uppercase">Urgency: <span className="text-amber-300 font-bold">{impactAnalysis.rollback_plan.urgency}</span></div>
+                      <div>
+                        <div className="text-[10px] text-slate-500 uppercase">Triggers</div>
+                        {(impactAnalysis.rollback_plan.triggers || []).slice(0, 2).map((t, i) => (
+                          <div key={i} className="text-[11px] text-slate-200">- {t}</div>
+                        ))}
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-slate-500 uppercase">Immediate Actions</div>
+                        {(impactAnalysis.rollback_plan.immediate_actions || []).slice(0, 2).map((a, i) => (
+                          <div key={i} className="text-[11px] text-slate-200">- {a}</div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </section>
             )}
           </>

@@ -116,6 +116,97 @@ function buildTestChecklist({ focusNode, topImpacted = [], changeType = "modify"
   return [...uniq.values()].slice(0, 8);
 }
 
+function buildRolloutPlan({ focusNode, topImpacted = [], riskDelta, changeType }) {
+  const highImpact = topImpacted.filter((n) => n.impact_level === "HIGH");
+  const mediumImpact = topImpacted.filter((n) => n.impact_level === "MED");
+
+  const steps = [
+    {
+      stage: 1,
+      title: "Pre-change safeguards",
+      objective: `Freeze critical assumptions for ${focusNode?.label || "focus node"} before ${changeType}.`,
+      actions: [
+        "Capture baseline logs/metrics for impacted endpoints and modules.",
+        "Run high-priority tests from checklist and record pass/fail baseline.",
+      ],
+      gate: "Proceed only if baseline checks are stable.",
+    },
+    {
+      stage: 2,
+      title: "Canary rollout",
+      objective: "Apply change to narrow surface area and verify critical paths.",
+      actions: [
+        "Enable change behind a flag or isolated deployment path where possible.",
+        `Validate top impacted nodes first (${topImpacted.slice(0, 3).map((n) => n.label).join(", ") || "none"}).`,
+      ],
+      gate: "No regression in critical path and no severe alerts for 1 monitoring window.",
+    },
+    {
+      stage: 3,
+      title: "Progressive expansion",
+      objective: "Expand rollout while monitoring risk-sensitive modules.",
+      actions: [
+        `Prioritize HIGH impact modules: ${highImpact.slice(0, 4).map((n) => n.label).join(", ") || "none"}.`,
+        `Track MED impact modules in secondary wave: ${mediumImpact.slice(0, 4).map((n) => n.label).join(", ") || "none"}.`,
+      ],
+      gate: "Error rate and latency stay within baseline thresholds.",
+    },
+    {
+      stage: 4,
+      title: "Finalization",
+      objective: "Lock in rollout and clean temporary safeguards.",
+      actions: [
+        "Complete full regression sweep and close residual warnings.",
+        "Remove temporary toggles/canary hooks after stability window.",
+      ],
+      gate: "All impacted paths stable for agreed window and checklist complete.",
+    },
+  ];
+
+  if (riskDelta > 12) {
+    steps[1].actions.push("Require explicit reviewer approval before expanding beyond canary.");
+  }
+
+  return steps;
+}
+
+function buildRollbackPlan({ focusNode, topImpacted = [], riskDelta }) {
+  const highTargets = topImpacted.filter((n) => n.impact_level === "HIGH").slice(0, 5);
+
+  return {
+    triggers: [
+      "Critical user flow fails after rollout.",
+      "Error budget spike or sustained 5xx increase.",
+      "Security/auth regression detected in smoke or production checks.",
+    ],
+    immediate_actions: [
+      "Revert latest deployment/change set to previous stable revision.",
+      "Disable feature flag/canary path for affected module.",
+      `Re-run focused health checks on ${focusNode?.label || "focus node"} and direct dependencies.`,
+    ],
+    verification_steps: [
+      "Confirm key APIs return baseline status codes and schema.",
+      "Confirm auth/session and DB integrity checks pass.",
+      "Verify error/latency metrics return to pre-change baseline.",
+    ],
+    critical_targets: highTargets.map((node) => ({
+      node_id: node.node_id,
+      label: node.label,
+      path: node.path,
+    })),
+    urgency: riskDelta > 12 ? "high" : riskDelta > 0 ? "medium" : "low",
+  };
+}
+
+function computeExecutionConfidence({ impactScore, riskDelta, blastRadiusCount, checklistCount }) {
+  let confidence = 88;
+  confidence -= impactScore * 0.22;
+  confidence -= Math.max(0, riskDelta) * 0.9;
+  confidence -= Math.min(20, blastRadiusCount * 0.8);
+  confidence += Math.min(10, checklistCount * 1.2);
+  return Number(clampScore(confidence).toFixed(2));
+}
+
 function getRepoDir(repoName = "repo1", repoPath = null) {
   if (repoPath && fs.existsSync(repoPath) && fs.statSync(repoPath).isDirectory()) {
     return repoPath;
@@ -280,6 +371,23 @@ export function simulateImpactWithMcp({
     topImpacted,
     changeType,
   });
+  const rolloutPlan = buildRolloutPlan({
+    focusNode: focus,
+    topImpacted,
+    riskDelta,
+    changeType,
+  });
+  const rollbackPlan = buildRollbackPlan({
+    focusNode: focus,
+    topImpacted,
+    riskDelta,
+  });
+  const executionConfidence = computeExecutionConfidence({
+    impactScore,
+    riskDelta,
+    blastRadiusCount: impactedNodes.length,
+    checklistCount: testChecklist.length,
+  });
 
   return {
     meta: {
@@ -289,7 +397,7 @@ export function simulateImpactWithMcp({
       edge_count: model.edges.length,
       built_at: model.builtAt,
       cache_hit: model.cacheHit,
-      phase: 2,
+      phase: 3,
     },
     summary: `Impact simulation for ${focus.type} '${focus.label}' computed blast radius using cross-file dependencies.`,
     focus_node: {
@@ -320,6 +428,13 @@ export function simulateImpactWithMcp({
     },
     top_impacted_nodes: topImpacted,
     test_checklist: testChecklist,
+    rollout_plan: rolloutPlan,
+    rollback_plan: rollbackPlan,
+    execution_confidence: {
+      score: executionConfidence,
+      level: executionConfidence >= 75 ? "HIGH" : executionConfidence >= 45 ? "MED" : "LOW",
+      note: "Confidence combines impact severity, projected risk delta, blast radius size, and checklist coverage.",
+    },
     ui_hints: {
       highlight_node_ids: unique([focus.id, ...topImpacted.map((n) => n.node_id)]),
       highlight_edge_ids: [...edgeTrail].slice(0, 40),
