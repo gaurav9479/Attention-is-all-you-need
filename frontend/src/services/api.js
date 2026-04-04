@@ -28,3 +28,13 @@ export const fetchSummary = async (filename, code) => {
   const { data } = await apiClient.post("/summary", { filename, code });
   return data;
 };
+
+export const fetchMcpNode = async (repoName, nodeId, mode = "normal") => {
+  const { data } = await apiClient.get(`/mcp/node?repo=${repoName || ""}&nodeId=${encodeURIComponent(nodeId)}&mode=${mode}`);
+  return data;
+};
+
+export const queryMcp = async (repoName, queryParams) => {
+  const { data } = await apiClient.post("/mcp/query", { repo: repoName, ...queryParams });
+  return data;
+};
