@@ -132,8 +132,9 @@ export default function InsightPanel({
             {/* SYSTEM INSIGHTS */}
             {analysis.insights && analysis.insights.critical_modules && (
                <section className="space-y-6 pt-4 border-t border-slate-800/50">
-                 <h3 className="text-[10px] uppercase font-bold tracking-[0.2em] text-red-400/80">Critical Corridors (Bottlenecks)</h3>
-                 <div className="flex flex-col gap-2">
+                 <h3 className="text-[10px] uppercase font-bold tracking-[0.2em] text-red-400/80">Global System Bottlenecks</h3>
+                 <p className="text-[9px] text-slate-500 italic mt-0.5 leading-tight">These are the most highly-coupled modules in your entire repository.</p>
+                 <div className="flex flex-col gap-2 mt-3">
                    {analysis.insights.bottlenecks?.map((b, i) => (
                      <div key={i} className="px-3 py-2 bg-slate-950 border border-red-900/30 text-amber-200/80 text-[10px] font-mono rounded-lg shadow-inner">
                        <span className="block truncate text-amber-500 font-bold mb-1">{b.node_id}</span>
