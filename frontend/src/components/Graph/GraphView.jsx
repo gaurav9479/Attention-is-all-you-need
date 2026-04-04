@@ -63,34 +63,18 @@ function GraphInner({
 
     return nodes.map((n) => {
       const isImpactHighlighted = highlightNodeIds.includes(n.id);
-      // Toggle hidden status based on search
-      let isHidden = !n.data?.label?.toLowerCase().includes(lowerSearch);
       
-      // Also apply level filter
+      const label = n.data?.label || "";
+      let isHidden = !label.toLowerCase().includes(lowerSearch);
+      
       if (levelFilter === "files" && n.data?.type !== "file") {
         isHidden = true;
       }
-      return {
-        ...n,
-        hidden: isHidden,
-        style: isImpactHighlighted
-          ? {
-              ...(n.style || {}),
-              border: "1px solid #f59e0b",
-              boxShadow: "0 0 18px rgba(245,158,11,0.38)",
-            }
-          : n.style,
-      };
-    });
-  }, [nodes, search, levelFilter, highlightNodeIds]);
-      const label = n.data?.label || "";
-      const isHidden = !label.toLowerCase().includes(lowerSearch) || 
-                       (levelFilter === "files" && n.data?.type !== "file");
-
+      
       const isPartOfImpact = impactChain.nodes.has(n.id);
       
-      return { 
-        ...n, 
+      return {
+        ...n,
         hidden: isHidden,
         data: {
            ...n.data,
@@ -98,73 +82,48 @@ function GraphInner({
         },
         style: {
           ...n.style,
+          ...(isImpactHighlighted ? { border: "1px solid #f59e0b", boxShadow: "0 0 18px rgba(245,158,11,0.38)" } : {}),
           opacity: hasImpact ? (isPartOfImpact ? 1 : 0.15) : 1,
           filter: hasImpact ? (isPartOfImpact ? 'none' : 'grayscale(100%) blur(1px)') : 'none',
           transition: 'all 0.4s ease'
         }
       };
     });
-  }, [nodes, search, levelFilter, impactChain]);
+  }, [nodes, search, levelFilter, highlightNodeIds, impactChain]);
 
   const visibleEdges = useMemo(() => {
     if (levelFilter === "files") return []; 
     const hasImpact = impactChain.edges.size > 0;
     
     return edges.map((edge) => {
-      if (highlightEdgeIds.includes(edge.id)) {
-        return {
-          ...edge,
-          animated: true,
-          style: { stroke: "#ef4444", strokeWidth: 2.8 },
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            color: "#ef4444",
-          },
-        };
-      }
-
-      // Apply specialized styling for imports
-      if (edge.data?.type === 'import') {
-        return {
-          ...edge,
-          animated: true,
-          style: { stroke: '#f59e0b', strokeWidth: 2.5 },
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            color: '#f59e0b',
-          },
-        };
-      }
-      return edge;
-    });
-  }, [edges, levelFilter, highlightEdgeIds]);
       const isPartOfImpact = impactChain.edges.has(edge.id);
       const isImport = edge.data?.type === 'import';
       const isHierarchy = edge.data?.type === 'hierarchy';
       const isRootEdge = edge.id.startsWith('root-to-');
+      const isEdgeHighlighted = highlightEdgeIds.includes(edge.id);
 
-      // High visibility neon default colors
-      let defaultStroke = '#06b6d4'; // Cyan
-      if (isImport) defaultStroke = '#f59e0b'; // Amber
-      if (isHierarchy) defaultStroke = '#10b981'; // Emerald
-      if (isRootEdge) defaultStroke = '#ef4444'; // Red
+      let defaultStroke = '#06b6d4'; 
+      if (isImport) defaultStroke = '#f59e0b'; 
+      if (isHierarchy) defaultStroke = '#10b981'; 
+      if (isRootEdge) defaultStroke = '#ef4444'; 
+      if (isEdgeHighlighted) defaultStroke = '#ef4444';
 
       return {
         ...edge,
-        animated: isPartOfImpact || isImport,
+        animated: isEdgeHighlighted || isPartOfImpact || isImport,
         style: { 
           ...edge.style,
-          stroke: hasImpact ? (isPartOfImpact ? defaultStroke : '#1e293b') : (edge.style?.stroke || defaultStroke),
+          stroke: isEdgeHighlighted ? '#ef4444' : (hasImpact ? (isPartOfImpact ? defaultStroke : '#1e293b') : (edge.style?.stroke || defaultStroke)),
           opacity: hasImpact ? (isPartOfImpact ? 1 : 0.05) : (edge.style?.opacity || 0.8),
-          strokeWidth: hasImpact ? (isPartOfImpact ? 4 : 1) : (edge.style?.strokeWidth || 2.5),
+          strokeWidth: isEdgeHighlighted ? 2.8 : (hasImpact ? (isPartOfImpact ? 4 : 1) : (edge.style?.strokeWidth || 2.5)),
         },
         markerEnd: { 
           type: MarkerType.ArrowClosed, 
-          color: hasImpact ? (isPartOfImpact ? defaultStroke : '#1e293b') : (edge.style?.stroke || defaultStroke) 
+          color: isEdgeHighlighted ? '#ef4444' : (hasImpact ? (isPartOfImpact ? defaultStroke : '#1e293b') : (edge.style?.stroke || defaultStroke)) 
         },
       };
     });
-  }, [edges, levelFilter, impactChain]);
+  }, [edges, levelFilter, highlightEdgeIds, impactChain]);
 
   // Refit view whenever major data changes
   useEffect(() => {
