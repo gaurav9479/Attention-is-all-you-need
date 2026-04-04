@@ -1,13 +1,14 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-export default function Navbar({ onAnalyze, isLoading, uiMode, onModeToggle }) {
-  const [url, setUrl] = useState("");
+export default function Navbar() {
   const [depth, setDepth] = useState("all");
+  const navigate = useNavigate();
 
   return (
     <nav className="h-14 border-b border-slate-800 bg-slate-900/50 backdrop-blur-md flex items-center px-6 justify-between shrink-0 z-50">
       <div className="flex items-center gap-8">
-        <div className="flex items-center gap-2 group cursor-pointer">
+        <div onClick={() => navigate("/")} className="flex items-center gap-2 group cursor-pointer hover:opacity-80 transition-opacity">
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-900/20 group-hover:scale-105 transition-transform">
              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white" viewBox="0 0 20 20" fill="currentColor">
                <path fillRule="evenodd" d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4a1 1 0 01-.8 1.6H6a1 1 0 01-1-1V7a1 1 0 00-1-1zM6 5a1 1 0 00-1 1v5h10.38l-1.875-2.5a1 1 0 010-1.2L15.38 5H6z" clipRule="evenodd" />
@@ -15,40 +16,9 @@ export default function Navbar({ onAnalyze, isLoading, uiMode, onModeToggle }) {
           </div>
           <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-400 tracking-tight">CodeMap</span>
         </div>
-
-        <div className="flex items-center bg-slate-950/80 border border-slate-800 rounded-full pl-4 pr-1 py-1 w-[450px] focus-within:border-blue-500/50 transition-colors">
-          <input 
-            type="text" 
-            placeholder="https://github.com/user/repo"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            className="bg-transparent border-none outline-none text-sm text-slate-200 placeholder:text-slate-600 w-full"
-          />
-          <button 
-            onClick={() => onAnalyze(url, depth)}
-            disabled={isLoading || !url}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-800 disabled:text-slate-500 text-white text-xs font-semibold px-5 py-2 rounded-full transition-all flex items-center gap-2"
-          >
-            {isLoading ? "Analyzing..." : "Analyze"}
-          </button>
-        </div>
       </div>
 
       <div className="flex items-center gap-6">
-        {/* UI Mode Toggle */}
-        <div className="flex items-center gap-3 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-full shadow-inner-dark">
-           <span className={`text-[10px] font-bold uppercase tracking-widest transition-colors ${uiMode === 'normal' ? 'text-amber-500' : 'text-slate-500'}`}>Normal</span>
-           <button 
-             onClick={() => onModeToggle(uiMode === 'normal' ? 'deep' : 'normal')}
-             className="relative w-10 h-5 bg-slate-950 rounded-full flex items-center p-1 border border-slate-700 transition-colors focus:outline-none"
-           >
-              <div 
-                className={`w-3.5 h-3.5 rounded-full shadow-md transform transition-transform duration-300 ease-in-out ${uiMode === 'deep' ? 'translate-x-4 bg-purple-500 shadow-[0_0_10px_#a855f7]' : 'translate-x-0 bg-amber-500 shadow-[0_0_10px_#f59e0b]'}`}
-              />
-           </button>
-           <span className={`text-[10px] font-bold uppercase tracking-widest transition-colors ${uiMode === 'deep' ? 'text-purple-400' : 'text-slate-500'}`}>Cosmic</span>
-        </div>
-
         {/* Depth Filter */}
         <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800">
            <button 
