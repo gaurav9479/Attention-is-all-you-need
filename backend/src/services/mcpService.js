@@ -39,6 +39,83 @@ function impactLevel(score) {
   return "LOW";
 }
 
+function clampScore(value) {
+  return Math.max(0, Math.min(100, value));
+}
+
+function changeTypeMultiplier(changeType) {
+  if (changeType === "delete") return 1.2;
+  if (changeType === "create") return 0.85;
+  return 1;
+}
+
+function buildTestChecklist({ focusNode, topImpacted = [], changeType = "modify" }) {
+  const checklist = [];
+
+  checklist.push({
+    priority: "HIGH",
+    type: "unit",
+    target: focusNode?.path || focusNode?.label || "selected node",
+    instruction: `Validate ${focusNode?.label || "selected node"} behavior for ${changeType} change with focused unit tests.`,
+  });
+
+  const riskyTargets = topImpacted.slice(0, 4);
+  for (const target of riskyTargets) {
+    checklist.push({
+      priority: target.impact_level === "HIGH" ? "HIGH" : "MED",
+      type: target.type === "file" ? "integration" : "unit",
+      target: target.path || target.label,
+      instruction: `Re-run ${target.label} dependent path checks (impact ${target.impact_score}%).`,
+    });
+  }
+
+  const corpus = `${focusNode?.label || ""} ${focusNode?.path || ""} ${topImpacted
+    .map((n) => `${n.label} ${n.path}`)
+    .join(" ")}`.toLowerCase();
+
+  if (/auth|login|jwt|session|token/.test(corpus)) {
+    checklist.push({
+      priority: "HIGH",
+      type: "regression",
+      target: "authentication flow",
+      instruction: "Run end-to-end auth regression (login, token refresh, access guard paths).",
+    });
+  }
+
+  if (/db|sql|query|repository|model/.test(corpus)) {
+    checklist.push({
+      priority: "HIGH",
+      type: "integration",
+      target: "database operations",
+      instruction: "Execute DB integration tests for read/write paths and rollback behavior.",
+    });
+  }
+
+  if (/api|route|controller|http|axios|fetch/.test(corpus)) {
+    checklist.push({
+      priority: "MED",
+      type: "api",
+      target: "api contracts",
+      instruction: "Validate API response contracts and status codes for impacted endpoints.",
+    });
+  }
+
+  checklist.push({
+    priority: "MED",
+    type: "smoke",
+    target: "critical user journey",
+    instruction: "Run a smoke suite on the primary user journey touching impacted modules.",
+  });
+
+  const uniq = new Map();
+  for (const item of checklist) {
+    const key = `${item.type}:${item.target}`;
+    if (!uniq.has(key)) uniq.set(key, item);
+  }
+
+  return [...uniq.values()].slice(0, 8);
+}
+
 function getRepoDir(repoName = "repo1", repoPath = null) {
   if (repoPath && fs.existsSync(repoPath) && fs.statSync(repoPath).isDirectory()) {
     return repoPath;
@@ -194,7 +271,15 @@ export function simulateImpactWithMcp({
     : 0;
 
   const focusRisk = propagatedRiskMap.get(focus.id) || 0;
-  const impactScore = Number(Math.min(100, aggregateScore * 0.75 + focusRisk * 0.25).toFixed(2));
+  const weightedImpact = aggregateScore * changeTypeMultiplier(changeType);
+  const impactScore = Number(clampScore(weightedImpact * 0.75 + focusRisk * 0.25).toFixed(2));
+  const predictedPostChangeRisk = Number(clampScore(focusRisk * 0.6 + impactScore * 0.4).toFixed(2));
+  const riskDelta = Number((predictedPostChangeRisk - focusRisk).toFixed(2));
+  const testChecklist = buildTestChecklist({
+    focusNode: focus,
+    topImpacted,
+    changeType,
+  });
 
   return {
     meta: {
@@ -204,7 +289,7 @@ export function simulateImpactWithMcp({
       edge_count: model.edges.length,
       built_at: model.builtAt,
       cache_hit: model.cacheHit,
-      phase: 1,
+      phase: 2,
     },
     summary: `Impact simulation for ${focus.type} '${focus.label}' computed blast radius using cross-file dependencies.`,
     focus_node: {
@@ -220,6 +305,13 @@ export function simulateImpactWithMcp({
       max_depth: maxDepth,
       rationale: "Impact decays across dependency edges and is blended with propagated risk.",
     },
+    risk_delta: {
+      baseline_propagated_risk: Number(focusRisk.toFixed(2)),
+      predicted_post_change_risk: predictedPostChangeRisk,
+      delta: riskDelta,
+      direction: riskDelta > 0 ? "increase" : riskDelta < 0 ? "decrease" : "neutral",
+      change_multiplier: Number(changeTypeMultiplier(changeType).toFixed(2)),
+    },
     blast_radius: {
       total_impacted_nodes: impactedNodes.length,
       high: bucket.high,
@@ -227,6 +319,7 @@ export function simulateImpactWithMcp({
       low: bucket.low,
     },
     top_impacted_nodes: topImpacted,
+    test_checklist: testChecklist,
     ui_hints: {
       highlight_node_ids: unique([focus.id, ...topImpacted.map((n) => n.node_id)]),
       highlight_edge_ids: [...edgeTrail].slice(0, 40),

@@ -167,6 +167,37 @@ export default function InsightPanel({
                   </div>
                 </div>
 
+                {impactAnalysis?.risk_delta && (
+                  <div className="bg-slate-950 border border-slate-800 rounded-lg p-3 space-y-2">
+                    <div className="text-[9px] uppercase tracking-widest text-slate-500 font-bold">Risk Delta Forecast</div>
+                    <div className="grid grid-cols-2 gap-2 text-[10px]">
+                      <div>
+                        <div className="text-slate-500">Baseline</div>
+                        <div className="text-slate-200 font-mono font-bold">{impactAnalysis.risk_delta.baseline_propagated_risk}%</div>
+                      </div>
+                      <div>
+                        <div className="text-slate-500">Predicted</div>
+                        <div className="text-slate-200 font-mono font-bold">{impactAnalysis.risk_delta.predicted_post_change_risk}%</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-800">
+                      <span className="text-[10px] uppercase text-slate-500">Delta</span>
+                      <span
+                        className={`text-[11px] font-black font-mono ${
+                          impactAnalysis.risk_delta.delta > 0
+                            ? "text-red-400"
+                            : impactAnalysis.risk_delta.delta < 0
+                            ? "text-emerald-400"
+                            : "text-slate-300"
+                        }`}
+                      >
+                        {impactAnalysis.risk_delta.delta > 0 ? "+" : ""}
+                        {impactAnalysis.risk_delta.delta}%
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-2.5">
                   <h4 className="text-[9px] uppercase font-bold text-slate-600 tracking-widest">Top Affected Nodes</h4>
                   {impactAnalysis?.top_impacted_nodes?.length > 0 ? (
@@ -185,6 +216,32 @@ export default function InsightPanel({
                     <div className="text-[11px] text-slate-500 italic">No impacted nodes detected.</div>
                   )}
                 </div>
+
+                {impactAnalysis?.test_checklist?.length > 0 && (
+                  <div className="space-y-2.5">
+                    <h4 className="text-[9px] uppercase font-bold text-slate-600 tracking-widest">Test Checklist</h4>
+                    <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                      {impactAnalysis.test_checklist.map((item, idx) => (
+                        <div key={`${item.type}-${item.target}-${idx}`} className="p-2.5 rounded-lg border border-slate-800 bg-slate-950/70">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] uppercase tracking-wide font-bold text-slate-400">{item.type}</span>
+                            <span
+                              className={`text-[9px] px-1.5 py-0.5 rounded border ${
+                                item.priority === "HIGH"
+                                  ? "text-red-300 border-red-500/40 bg-red-500/10"
+                                  : "text-amber-300 border-amber-500/40 bg-amber-500/10"
+                              }`}
+                            >
+                              {item.priority}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-1">{item.target}</div>
+                          <div className="text-[11px] text-slate-200 mt-1 leading-snug">{item.instruction}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </section>
             )}
           </>
