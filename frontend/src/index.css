@@ -6,6 +6,12 @@
 
 :root {
   color-scheme: dark;
+  --rgb-amber: 245, 158, 11;
+  --rgb-blue: 59, 130, 246;
+  --rgb-emerald: 16, 185, 129;
+  --rgb-indigo: 99, 102, 241;
+  --rgb-rose: 244, 63, 94;
+  --rgb-purple: 168, 85, 247;
 }
 
 body {
@@ -21,126 +27,107 @@ body {
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #1e293b;
+  background: rgba(255, 255, 255, 0.05);
   border-radius: 10px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Glassmorphic System */
+.bg-glass {
+  background: rgba(15, 17, 26, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.6);
+}
+
+.bg-glass-hover:hover {
+  background: rgba(25, 27, 36, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 8px 64px 0 rgba(0, 0, 0, 0.8), 0 0 15px rgba(59, 130, 246, 0.1);
 }
 
 /* React Flow Overrides */
 .react-flow__background {
-  background-color: #09090b !important;
+  background-color: #030407 !important;
 }
 
+/* Data Flow "Threads" Animation */
 .react-flow__edge-path {
-  transition: all 0.3s ease;
+  stroke-width: 2.5;
+  transition: all 0.4s ease;
+}
+
+@keyframes edge-flow {
+  0% { stroke-dashoffset: 24; }
+  100% { stroke-dashoffset: 0; }
 }
 
 .react-flow__edge.animated .react-flow__edge-path {
-  stroke-dasharray: 6;
-  animation: dashdraw 1s linear infinite;
+  stroke-dasharray: 8, 12;
+  animation: edge-flow 0.8s linear infinite;
+  filter: drop-shadow(0 0 6px currentColor);
 }
 
 .react-flow__edge.selected .react-flow__edge-path {
-  stroke: #3b82f6 !important;
-  stroke-width: 3 !important;
-  filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.8));
-}
-
-@keyframes dashdraw {
-  from { stroke-dashoffset: 8; }
-  to { stroke-dashoffset: 0; }
+  stroke-width: 4 !important;
+  filter: drop-shadow(0 0 12px currentColor);
 }
 
 /* Floating Node Animation */
 @keyframes antigravity {
-  0%, 100% { transform: translateY(0px) rotate(0deg); }
-  25% { transform: translateY(-3px) rotate(0.1deg); }
-  50% { transform: translateY(0px) rotate(-0.1deg); }
-  75% { transform: translateY(3px) rotate(0.1deg); }
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-5px); }
 }
 
 .react-flow__node {
   transition: opacity 0.4s ease, filter 0.4s ease !important;
-  z-index: 10 !important;
 }
 
-/* Float effect on the inner container instead of the React Flow node wrapper */
 .react-flow__node > div {
-  animation: antigravity 6s ease-in-out infinite;
+  animation: antigravity 8s ease-in-out infinite;
   animation-delay: var(--delay, 0s);
   will-change: transform;
 }
 
-.react-flow__node.selected {
-  z-index: 100 !important;
-  filter: drop-shadow(0 0 30px rgba(59, 130, 246, 0.4)) !important;
+/* Node Glows */
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.1); }
 }
 
-/* 3D Viewport - enhanced for depth */
+.node-glow {
+  position: absolute;
+  inset: -20px;
+  border-radius: 50%;
+  background: radial-gradient(circle, currentColor 0%, transparent 70%);
+  filter: blur(20px);
+  z-index: -1;
+  animation: glow-pulse 4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* 3D Depth Viewport */
 .react-flow__viewport {
   transform-style: preserve-3d;
-  transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
-  backface-visibility: hidden;
+  transition: transform 0.8s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
-@keyframes pulse-impact {
-  0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.6); border-color: rgba(245, 158, 11, 0.8); }
-  70% { box-shadow: 0 0 0 25px rgba(245, 158, 11, 0); border-color: rgba(245, 158, 11, 1); }
-  100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.6); border-color: rgba(245, 158, 11, 0.8); }
-}
+/* Neon Glows for Architecture - RGB Refactor */
+.glow-amber { color: rgb(var(--rgb-amber)); }
+.glow-blue { color: rgb(var(--rgb-blue)); }
+.glow-emerald { color: rgb(var(--rgb-emerald)); }
+.glow-indigo { color: rgb(var(--rgb-indigo)); }
+.glow-rose { color: rgb(var(--rgb-rose)); }
+.glow-purple { color: rgb(var(--rgb-purple)); }
 
-.node-impact {
-  animation: pulse-impact 1.5s infinite !important;
-  z-index: 50 !important;
-}
-
-/* Node Container Glows */
-.react-flow__node-custom {
-  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.9);
-}
-
-/* Pulse for API nodes */
-@keyframes pulse-api {
-  0% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.4); }
-  70% { box-shadow: 0 0 0 10px rgba(168, 85, 247, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0); }
-}
-
-.node-api-pulse {
-  animation: pulse-api 2s infinite !important;
-}
-
-/* Utility for code font */
-.font-mono {
-  font-family: 'JetBrains Mono', monospace !important;
-}
-
-.shadow-inner-dark {
-  box-shadow: inset 0 2px 8px 0 rgba(0, 0, 0, 0.5);
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
+/* Micro-animations */
 @keyframes zoomIn {
-  from { opacity: 0; transform: scale(0.95); }
+  from { opacity: 0; transform: scale(0.9); }
   to { opacity: 1; transform: scale(1); }
 }
 
-@keyframes progress {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(200%); }
-}
+.animate-zoom-in { animation: zoomIn 0.6s cubic-bezier(0.23, 1, 0.32, 1) forwards; }
 
-.animate-fade-in { animation: fadeIn 0.8s ease-out forwards; }
-.animate-fade-in-up { animation: fadeInUp 0.8s ease-out forwards; }
-.animate-zoom-in { animation: zoomIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }

@@ -8,7 +8,8 @@ export const cloneRepo = async (req, res) => {
   const { repoUrl } = req.body;
   if (!repoUrl) return res.status(400).json({ error: "Missing repoUrl" });
 
-  const repoName = repoUrl.split("/").pop().replace(".git", "");
+  const cleanUrl = repoUrl.replace(/\/$/, "");
+  const repoName = cleanUrl.split("/").pop().replace(".git", "");
   // Sticking with ./repos for consistency with other backend controllers
   const dir = `./repos/${repoName}`;
 

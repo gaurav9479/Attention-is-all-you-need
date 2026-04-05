@@ -1,88 +1,145 @@
 export const getLayoutedElements = (nodes, edges) => {
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-  
-  // 1. Filter out any existing root nodes to prevent stacking
-  const existingNodes = nodes.filter(n => n.id !== 'root-node');
+  const nodeMap = new Map();
+  nodes.forEach(n => nodeMap.set(n.id, n));
 
-  // Add REPOSITORY ROOT (Anchor)
+  const folderNodes = [];
+  const hierarchyEdges = [];
+
+  // 1. Root Node
   const rootNode = {
     id: 'root-node',
     type: 'custom',
-    position: { x: 400, y: 0 },
     data: { label: 'Repository Root', type: 'root', layer: 0 }
   };
+  nodeMap.set(rootNode.id, rootNode);
 
-  const finalNodes = [rootNode, ...existingNodes];
+  // 2. Identify folders and create parent-child links
+  nodes.forEach(node => {
+     if (node.data?.type === 'file') {
+        const pathParts = node.data.path.split('/');
+        let currentParentId = 'root-node';
+        let currentPath = '';
 
-  // VERTICAL LAYER CONSTANTS
-  const LAYER_Y = {
-    0: 160,   // Gateway (Root/Server)
-    1: 520,   // Structure (Modules/Classes)
-    2: 1000   // Atomic (Functions/Utils)
+        for (let i = 0; i < pathParts.length - 1; i++) {
+           const folderName = pathParts[i];
+           currentPath = currentPath ? `${currentPath}/${folderName}` : folderName;
+           const folderId = `folder:${currentPath}`;
+
+           if (!nodeMap.has(folderId)) {
+              const fNode = {
+                 id: folderId,
+                 type: 'custom',
+                 data: { label: folderName.toUpperCase(), type: 'folder', path: currentPath, layer: 1 }
+              };
+              nodeMap.set(folderId, fNode);
+              folderNodes.push(fNode);
+              
+              hierarchyEdges.push({
+                 id: `h:${currentParentId}->${folderId}`,
+                 source: currentParentId,
+                 target: folderId,
+                 data: { type: 'hierarchy' }
+              });
+           }
+           currentParentId = folderId;
+        }
+
+        hierarchyEdges.push({
+           id: `h:${currentParentId}->${node.id}`,
+           source: currentParentId,
+           target: node.id,
+           data: { type: 'hierarchy' }
+        });
+     }
+  });
+
+  const finalNodes = [rootNode, ...folderNodes, ...nodes];
+  const finalEdges = [...edges, ...hierarchyEdges];
+
+  // 3. Wide Grid-Architectural Layout
+  const NODES_PER_ROW = 6;
+  const CELL_WIDTH = 450;
+  const CELL_HEIGHT = 140;
+  const LEVEL_SPACING = 240;
+
+  const childrenMap = new Map();
+  finalNodes.forEach(n => childrenMap.set(n.id, []));
+  finalEdges.forEach(e => {
+    if (e.data?.type === 'hierarchy' || e.id.includes('h:')) {
+       const children = childrenMap.get(e.source) || [];
+       if (!children.includes(e.target)) children.push(e.target);
+       childrenMap.set(e.source, children);
+    }
+  });
+
+  const subtreeHeights = {};
+  const calculateSubtreeHeight = (nodeId) => {
+    const children = childrenMap.get(nodeId) || [];
+    if (children.length === 0) {
+      subtreeHeights[nodeId] = CELL_HEIGHT;
+      return CELL_HEIGHT;
+    }
+    
+    // Rows used by direct children
+    const numRows = Math.ceil(children.length / NODES_PER_ROW);
+    const childrenHeight = children.reduce((acc, childId) => acc + calculateSubtreeHeight(childId), 0);
+    
+    // Total height is the grid blocks of children
+    const totalHeight = (numRows * CELL_HEIGHT) + LEVEL_SPACING;
+    subtreeHeights[nodeId] = totalHeight;
+    return totalHeight;
   };
 
-  const CLUSTER_WIDTH = isMobile ? 380 : 580;
-  const NODE_SPACING_X = 250;
+  calculateSubtreeHeight('root-node');
 
-  // Group nodes by their directory to create "Sectors"
-  const sectors = {};
-  finalNodes.forEach(node => {
-     if (node.id === 'root-node') return;
-     const dir = node.data?.path ? node.data.path.split('/').slice(0, -1).join('/') || 'root' : 'root';
-     if (!sectors[dir]) sectors[dir] = [];
-     sectors[dir].push(node);
-  });
+  const positions = {};
+  const assignPositions = (nodeId, startX, startY) => {
+    positions[nodeId] = { x: startX, y: startY };
 
-  const sectorNames = Object.keys(sectors);
-  
-  sectorNames.forEach((sectorName, sIndex) => {
-    const sectorNodes = sectors[sectorName];
-    const sectorXBase = sIndex * CLUSTER_WIDTH;
+    const children = childrenMap.get(nodeId) || [];
+    if (children.length === 0) return;
 
-    const layerCounts = { 0: 0, 1: 0, 2: 0 };
+    // Arrange children in a grid centered under the parent
+    const gridStartY = startY + LEVEL_SPACING;
     
-    sectorNodes.forEach((node) => {
-      const layer = node.data?.layer ?? 1;
-      const xOffset = layerCounts[layer] * NODE_SPACING_X;
+    children.forEach((childId, index) => {
+      const row = Math.floor(index / NODES_PER_ROW);
+      const col = index % NODES_PER_ROW;
       
-      node.position = {
-        x: sectorXBase + xOffset - (CLUSTER_WIDTH / 2),
-        y: LAYER_Y[layer] + (Math.random() * 25)
-      };
-
-      layerCounts[layer]++;
-
-      // Auto-connect layer 0 nodes to the root
-      if (layer === 0 && node.id !== 'root-node') {
-        edges.push({
-          id: `root-to-${node.id}`,
-          source: 'root-node',
-          target: node.id,
-          animated: true,
-          style: { stroke: '#1e293b', strokeWidth: 1, opacity: 0.2 }
-        });
-      }
+      const gridX = startX + (col - (NODES_PER_ROW - 1) / 2) * CELL_WIDTH;
+      const gridY = gridStartY + row * CELL_HEIGHT;
+      
+      assignPositions(childId, gridX, gridY);
     });
+  };
+
+  assignPositions('root-node', 0, 0);
+
+  // Apply positions
+  finalNodes.forEach(node => {
+     if (positions[node.id]) {
+        node.position = positions[node.id];
+     } else {
+        node.position = { x: Math.random() * 400, y: 1500 };
+     }
   });
 
-  const styledEdges = edges.map(edge => {
-    const isImport = edge.data?.type === 'import';
-    const isHierarchy = edge.data?.type === 'hierarchy';
-    const isRootEdge = edge.id.startsWith('root-to-');
-
-    // High visibility neon colors for the "threads"
-    let strokeColor = '#06b6d4'; // Cyan default
-    if (isImport) strokeColor = '#f59e0b'; // Amber for imports
-    if (isHierarchy) strokeColor = '#10b981'; // Emerald for functions/classes
-    if (isRootEdge) strokeColor = '#ef4444'; // Red for root connections
+  // Final Styling of Edges
+  const styledEdges = finalEdges.map(edge => {
+    const isImport = edge.data?.type === 'import' || edge.id.startsWith('import:');
+    const isHierarchy = edge.data?.type === 'hierarchy' || edge.id.includes('h:');
+    
+    let strokeColor = 'rgb(100, 116, 139)';
+    if (isImport) strokeColor = 'rgb(245, 158, 11)';
+    if (isHierarchy) strokeColor = 'rgb(59, 130, 246)';
 
     return {
       ...edge,
-      animated: isImport || edge.animated,
+      animated: isImport,
       style: {
         stroke: strokeColor,
-        strokeWidth: isImport ? 3 : 2.5,
-        opacity: isRootEdge ? 0.7 : (isHierarchy ? 0.8 : 1),
+        strokeWidth: isImport ? 3 : 1.5,
+        opacity: isHierarchy ? 0.3 : 0.8,
         ...edge.style
       }
     };

@@ -49,3 +49,18 @@ export const fetchImpactSimulation = async ({ repo, nodeId, changeType = "modify
   });
   return data;
 };
+
+export const fetchChat = async (query, contextPrefix, code = "", filename = "", mode = "json", repoName = "") => {
+  const { data } = await apiClient.post("/chat", { query, contextPrefix, code, filename, mode, repoName });
+  return data;
+};
+
+export const apiGetVirtualLayer = async (repoName) => {
+  const { data } = await apiClient.get(`/virtual/${repoName}`);
+  return data;
+};
+
+export const apiSaveVirtualLayer = async (repoName, nodes, edges) => {
+  const { data } = await apiClient.post(`/virtual/${repoName}`, { nodes, edges });
+  return data;
+};

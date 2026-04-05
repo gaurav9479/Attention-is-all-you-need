@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const AI_API_URL = "http://127.0.0.1:8000/analyze";
-const TIMEOUT_MS = 25000;    // 25 second timeout for extensive AI generation
+const TIMEOUT_MS = 60000;    // 60 second timeout for extensive AI generation
 const CODE_CHAR_LIMIT = 8000;
 
 export const getSummary = async (req, res) => {
@@ -41,5 +41,21 @@ export const getSummary = async (req, res) => {
       functions: [],
       classes: []
     });
+  }
+};
+
+export const getChat = async (req, res) => {
+  const { query, contextPrefix, code, filename, mode, repoName } = req.body;
+
+  try {
+    const response = await axios.post(
+      "http://127.0.0.1:8000/chat",
+      { query, context_prefix: contextPrefix || "", code: code || "", filename: filename || "", mode: mode || "json", repo_name: repoName || "" },
+      { timeout: TIMEOUT_MS }
+    );
+    return res.json(response.data);
+  } catch (err) {
+    console.error(`[AI] Chat API failed: ${err.message}`);
+    return res.status(500).json({ error: "Chat service unavailable." });
   }
 };

@@ -64,9 +64,44 @@ export default function InsightPanel({
                 Context Summary
               </h3>
               <div className="p-4 bg-slate-950 border border-slate-800 text-[13px] text-slate-300 leading-relaxed font-medium rounded-xl shadow-inner-dark italic border-l-2 border-l-purple-500/50">
-                "{analysis.summary}"
+                "{analysis.purpose || analysis.summary}"
               </div>
             </section>
+
+            {analysis.inputs_outputs && analysis.inputs_outputs !== "N/A" && (
+              <section className="space-y-3 pt-4 border-t border-slate-800/50">
+                <h3 className="text-[10px] uppercase font-bold tracking-[0.2em] text-blue-400/80">
+                  I/O Signature
+                </h3>
+                <div className="p-3 bg-slate-950/80 border border-slate-800 text-[11px] font-mono text-slate-300 rounded-lg">
+                  {analysis.inputs_outputs}
+                </div>
+              </section>
+            )}
+
+            {analysis.complexity && analysis.complexity !== "N/A" && (
+              <section className="space-y-3 pt-4 border-t border-slate-800/50">
+                <h3 className="text-[10px] uppercase font-bold tracking-[0.2em] text-emerald-400/80">
+                  Complexity & Logic Density
+                </h3>
+                <div className="p-3 bg-slate-950/80 border border-slate-800 text-[12px] text-slate-300 rounded-lg">
+                  {analysis.complexity}
+                </div>
+              </section>
+            )}
+
+            {analysis.side_effects && analysis.side_effects.length > 0 && (
+              <section className="space-y-3 pt-4 border-t border-slate-800/50">
+                <h3 className="text-[10px] uppercase font-bold tracking-[0.2em] text-amber-400/80">
+                  Identified Side Effects
+                </h3>
+                <ul className="list-disc pl-5 space-y-1 text-[12px] text-slate-400">
+                  {analysis.side_effects.map((se, i) => (
+                    <li key={i}>{se}</li>
+                  ))}
+                </ul>
+              </section>
+            )}
 
             {/* DUAL RISK SCORING */}
             {analysis.risk && (

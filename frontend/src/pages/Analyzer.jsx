@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { applyNodeChanges, applyEdgeChanges } from "reactflow";
 import {
   fetchGraph,
@@ -7,6 +8,11 @@ import {
   cloneRepo,
   fetchTree,
   fetchImpactSimulation,
+  queryMcp,
+  fetchMcpNode,
+  fetchChat,
+  apiGetVirtualLayer,
+  apiSaveVirtualLayer
 } from "../services/api";
 import { getLayoutedElements } from "../utils/layout";
 
@@ -16,6 +22,7 @@ import InsightPanel from "../components/Panel/InsightPanel";
 import StatusBar from "../components/Layout/StatusBar";
 import GraphView from "../components/Graph/GraphView";
 import CosmicGraphView from "../components/Graph/CosmicGraphView";
+import ChatBot from "../components/UI/ChatBot";
 
 export default function Analyzer() {
   const location = useLocation();
@@ -70,22 +77,35 @@ export default function Analyzer() {
     [repoName]
   );
 
+  const [virtualNodes, setVirtualNodes] = useState([]);
+  const [virtualEdges, setVirtualEdges] = useState([]);
+
+  // Autosave Virtual Layer (Manual Architecture)
+  useEffect(() => {
+    if (!repoName || (virtualNodes.length === 0 && virtualEdges.length === 0)) return;
+    const timer = setTimeout(() => {
+      apiSaveVirtualLayer(repoName, virtualNodes, virtualEdges).catch(console.error);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [repoName, virtualNodes, virtualEdges]);
+
   const handleAnalyze = async (repoUrl) => {
     setIsLoading(true);
     try {
-      // 1. Clone Repo (Sequential lock - Required to get the repo name)
       const cloneData = await cloneRepo(repoUrl);
       const name = cloneData.repoName;
       setRepoName(name);
 
-      // 2. Fetch EVERYTHING in pure parallel (Tree, Graph, and Initial Root MCP Analysis)
-      const [treeData, graphData, initialMcp] = await Promise.all([
+      const [treeData, graphData, initialMcp, vLayer] = await Promise.all([
         fetchTree(name),
         fetchGraph(name),
-        queryMcp(name, { query: "architecture entry point", limit: 3, mode: uiMode }).catch(() => null)
+        queryMcp(name, { query: "architecture entry point", limit: 3, mode: uiMode }).catch(() => null),
+        apiGetVirtualLayer(name).catch(() => ({ nodes: [], edges: [] }))
       ]);
 
       setTree(treeData);
+      setVirtualNodes(vLayer.nodes || []);
+      setVirtualEdges(vLayer.edges || []);
 
       if (graphData) {
         let typedNodes = (graphData.nodes || []).map((n) => ({
@@ -94,29 +114,26 @@ export default function Analyzer() {
         }));
         
         const { nodes: lNodes, edges: lEdges } = getLayoutedElements(typedNodes, graphData.edges || []);
-        setNodes(lNodes);
-        setEdges(lEdges);
         
-        // Auto-populate the Insight panel with the baseline MCP overview of the entire app
+        // Final Merge: Scanned + Virtual (Deduplicated)
+        const combinedNodes = [...lNodes, ...(vLayer.nodes || [])];
+        const uniqueNodes = Array.from(new Map(combinedNodes.map(n => [n.id, n])).values());
+        setNodes(uniqueNodes);
+
+        const combinedEdges = [...lEdges, ...(vLayer.edges || [])];
+        const uniqueEdges = Array.from(new Map(combinedEdges.map(e => [e.id, e])).values());
+        setEdges(uniqueEdges);
+        
         if (initialMcp) {
           setSelectedFile({ name: "Repository Architecture", path: "/" });
-          
-          // Sanitize the initial overview so it doesn't accidentally lock onto the riskiest node
-          // and display localized file dependencies before the user has even clicked anything.
-          const globalOverview = {
+          setAnalysis({
             ...initialMcp,
-            focus_node: null,
-            risk: null,
-            dependencies: null,
-            matches: null,
-            summary: `System topology successfully mapped. Analyzed ${typedNodes.length} modules and ${graphData.edges?.length || 0} active cross-connections.`
-          };
-          
-          setAnalysis(globalOverview);
+            summary: `System topology mapped. Analyzed ${typedNodes.length} modules and ${graphData.edges?.length || 0} connections.`
+          });
         }
       }
     } catch (err) {
-      console.error("Parallel analysis failed:", err);
+      console.error("Analysis failed:", err);
     } finally {
       setIsLoading(false);
     }
@@ -149,7 +166,8 @@ export default function Analyzer() {
     const nodeData = node.data || node;
     const nodeIdToFetch = node.id || nodeData.id || nodeData.path;
     
-    if (!nodeIdToFetch) return;
+    // Don't analyze virtual nodes with RAG unless we add support for it
+    if (!nodeIdToFetch || nodeData.type === 'virtual') return;
 
     const fileData = { name: nodeData.label || nodeData.name, path: nodeData.path };
     setSelectedFile(fileData);
@@ -165,14 +183,11 @@ export default function Analyzer() {
       const codeResp = await fetchFileContent(node.data.path, repoName);
 
       const [summary, impact] = await Promise.all([
-        fetchSummary(node.data.label, codeResp.content),
+        fetchChat(`Analyze this codebase node: ${node.data.label}`, `Analyze for context summary.`, codeResp.content, node.data.path),
         runImpactSimulation({ nodeId: node.id || null, changeType: "modify" }),
       ]);
 
       setAnalysis(summary);
-      if (!impact) {
-        setImpactAnalysis(null);
-      }
     } catch (err) {
       console.error("Parallel node analysis failed:", err);
     } finally {
@@ -191,12 +206,23 @@ export default function Analyzer() {
   );
 
   const onNodesChange = useCallback(
-    (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
+    (changes) => setNodes((nds) => {
+       const next = applyNodeChanges(changes, nds);
+       // Sync back to virtual layer state if needed
+       const virtuals = next.filter(n => n.data?.type === 'virtual');
+       setVirtualNodes(virtuals);
+       return next;
+    }),
     []
   );
   
   const onEdgesChange = useCallback(
-    (changes) => setEdges((eds) => applyEdgeChanges(changes, eds)),
+    (changes) => setEdges((eds) => {
+       const next = applyEdgeChanges(changes, eds);
+       const virtuals = next.filter(e => e.data?.type === 'manual');
+       setVirtualEdges(virtuals);
+       return next;
+    }),
     []
   );
 
@@ -232,17 +258,15 @@ export default function Analyzer() {
              </form>
            </div>
 
-           <GraphView 
-             nodes={nodes}
-             edges={edges}
-             loading={isLoading}
-             levelFilter={levelFilter}
-             highlightNodeIds={highlightNodeIds}
-             highlightEdgeIds={highlightEdgeIds}
-             onNodesChange={onNodesChange}
-             onEdgesChange={onEdgesChange}
-             onNodeClick={onNodeClick}
-           />
+           <div className="absolute top-6 right-6 z-[100]">
+             <button 
+               onClick={() => setUiMode(m => m === 'normal' ? 'cosmic' : 'normal')}
+               className="px-4 py-2 bg-slate-900/50 backdrop-blur-xl border border-white/10 text-slate-300 rounded-xl text-[10px] font-bold shadow-2xl hover:bg-slate-800 transition-colors uppercase tracking-widest"
+             >
+               Switch to {uiMode === 'normal' ? 'Cosmic 3D Mode' : 'Architect Mode'}
+             </button>
+           </div>
+           
            {uiMode === 'normal' ? (
              <GraphView 
                nodes={nodes}
@@ -277,6 +301,12 @@ export default function Analyzer() {
       <StatusBar 
         status={isLoading ? "Processing Repository..." : "System Ready"} 
         stats={{ repoName, totalFiles: nodes.filter(n => n.data?.type === 'file').length, totalFunctions: nodes.filter(n => n.data?.type === 'function').length }} 
+      />
+
+      <ChatBot 
+        repoName={repoName}
+        selectedNode={selectedFile ? { ...selectedFile, id: selectedNodeId } : null}
+        mode={uiMode}
       />
     </div>
   );

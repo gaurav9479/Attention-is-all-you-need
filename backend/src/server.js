@@ -5,6 +5,7 @@ import fileRoute from "./routes/file.route.js";
 import aiRoute from "./routes/ai.route.js";
 import graphRoute from "./routes/graph.route.js";
 import mcpRoute from "./routes/mcp.route.js";
+import virtualRoute from "./routes/virtual.route.js";
 
 const app = express();
 
@@ -18,6 +19,7 @@ app.use("/api", fileRoute);
 app.use("/api", aiRoute);
 app.use("/api", graphRoute);
 app.use("/api", mcpRoute);
+app.use("/api/virtual", virtualRoute);
 
 // Health check
 app.get("/", (req, res) => {

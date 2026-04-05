@@ -11,15 +11,16 @@ from pydantic import BaseModel
 
 load_dotenv()
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    raise RuntimeError("OPENAI_API_KEY not set in .env")
+API_KEY = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY")
+if not API_KEY:
+    raise RuntimeError("API key not set in .env")
 
 client = OpenAI(
-    api_key=OPENAI_API_KEY,
+    base_url="https://openrouter.ai/api/v1",
+    api_key=API_KEY,
 )
 
-MODEL = "gpt-4o-mini"
+MODEL = "openai/gpt-4o-mini"
 MAX_RETRIES = 3
 
 app = FastAPI(title="CodeMap AI Service")
@@ -57,6 +58,24 @@ class WarningsRequest(BaseModel):
 
 class WarningsResponse(BaseModel):
     warnings: List[str]
+
+import rag_service
+
+class ChatRequest(BaseModel):
+    query: str
+    context_prefix: str
+    code: str = ""
+    filename: str = ""
+    mode: str = "json"
+    repo_name: str = ""
+
+class ChatResponse(BaseModel):
+    purpose: str = ""
+    inputs_outputs: str = ""
+    side_effects: List[str] = []
+    complexity: str = ""
+    risk: str = "LOW"
+    reply: str = ""
 
 
 # ---------- Helpers ----------
@@ -122,6 +141,15 @@ def _chat(messages: list, retries: int = MAX_RETRIES) -> dict:
                 ]
     raise ValueError(f"Failed to get valid JSON after {retries} attempts: {last_err}")
 
+
+def _chat_text(messages: list) -> str:
+    """Call OpenAI and return raw string text for conversational interactions."""
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=messages,
+        temperature=0.7,
+    )
+    return response.choices[0].message.content
 
 # ---------- Endpoints ----------
 
@@ -189,6 +217,81 @@ def warnings(req: WarningsRequest):
         return WarningsResponse(warnings=[str(w) for w in raw_warnings[:3]])
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+_node_cache = {}
+
+@app.post("/chat", response_model=ChatResponse)
+def handle_chat_query(req: ChatRequest):
+    """Answers specific codebase queries regarding functions/files with structured JSON logic or conversational text."""
+    cache_key = f"{req.filename}:{req.query}:{req.mode}"
+    if cache_key in _node_cache:
+        return _node_cache[cache_key]
+
+    clipped_code = req.code[:6000] if req.code else ""
+    code_ctx = f"\n\nSource Code Context ({req.filename}):\n```\n{clipped_code}\n```" if clipped_code else ""
+
+    if req.mode == "conversational":
+        rag_context = ""
+        if req.repo_name:
+            rag_context = rag_service.search(req.repo_name, req.query)
+
+        system_prompt = (
+            "You are CodeMap AI, an expert engineering assistant with deep global awareness of the repository logic. "
+            "Help the user understand architecture, answer "
+            "questions intelligently, and provide helpful code examples using the provided context. Be conversational."
+        )
+        user_prompt = f"Context: {req.context_prefix}\n"
+        if rag_context:
+            user_prompt += f"\n<Global Codebase Evidence (RAG Retrieval)>\n{rag_context}\n</Global Codebase Evidence>\n"
+        user_prompt += f"\nUser Query: {req.query}{code_ctx}"
+        
+        try:
+            reply = _chat_text(
+                [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ]
+            )
+            response = ChatResponse(reply=reply)
+            _node_cache[cache_key] = response
+            return response
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    else:
+        system_prompt = (
+            "You are an expert internal code analyzer running in 'Normal Mode'. "
+            "Your responses MUST be strictly JSON. No markdown, no filler text. "
+            "Respond exactly with this JSON schema:\n"
+            "{\n"
+            '  "purpose": "2-3 sentences summarizing function/class purpose",\n'
+            '  "inputs_outputs": "inputs and outputs clearly defined",\n'
+            '  "side_effects": ["list", "of", "side effects"],\n'
+            '  "complexity": "brief reasoning on time/space complexity or logic density",\n'
+            '  "risk": "LOW" or "MED" or "HIGH"\n'
+            "}\n"
+            "Optimize your token usage. Avoid unnecessary explanations."
+        )
+        user_prompt = f"Context: {req.context_prefix}\nUser Query: {req.query}{code_ctx}"
+
+        try:
+            data = _chat(
+                [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ]
+            )
+            response = ChatResponse(
+                purpose=str(data.get("purpose", "N/A")),
+                inputs_outputs=str(data.get("inputs_outputs", "N/A")),
+                side_effects=list(data.get("side_effects", [])),
+                complexity=str(data.get("complexity", "N/A")),
+                risk=str(data.get("risk", "LOW")).upper()
+            )
+            _node_cache[cache_key] = response
+            return response
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
